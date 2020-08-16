@@ -1,14 +1,60 @@
-# Parameter 'file_selectos' expects a named character vector of single
-# file dimension selectors.
-# Parameter 'inner_indices' expects a named list of numeric vectors.
+#'NetCDF file data reader for 'startR'
+#'
+#'This is a data reader function for NetCDF files, intended for use as parameter 
+#'file_data_reader in a Start() call. This function complies with the 
+#'input/output interface required by Start() defined in the documentation for 
+#'the parameter 'file_data_reader'.\cr\cr
+#'This function uses the function NcToArray() in the package 'easyNCDF', which 
+#'in turn uses nc_var_get() in the package 'ncdf4'.
+#'
+#'@param file_path A character string indicating the path to the data file to 
+#'  read. See details in the documentation of the parameter 'file_data_reader' 
+#'  of the function Start(). The default value is NULL.
+#'@param file_object An open connection to a NetCDF file, optionally with 
+#'  additional header information. See details in the documentation of the 
+#'  parameter 'file_data_reader' of the function Start(). The default value is 
+#'  NULL.
+#'@param file_selectors A named list containing the information of the path of 
+#'  the file to read data from. It is automatically provided by Start(). See 
+#'  details in the documentation of the parameter 'file_data_reader' of the 
+#'  function Start(). The default value is NULL.
+#'@param inner_indices A named list of numeric vectors indicating the indices 
+#'  to take from each of the inner dimensions in the requested file. It is 
+#'  automatically provided by Start(). See details in the documentation of the 
+#'  parameter 'file_data_reader' of the function Start(). The default value is 
+#'  NULL.
+#'@param synonims A named list indicating the synonims for the dimension names 
+#'  to look for in the requested file, exactly as provided in the parameter 
+#'  'synonims' in a Start() call. See details in the documentation of the 
+#'  parameter 'file_data_reader' of the function Start().
+#'
+#'@return A multidimensional data array with the named dimensions and indices 
+#'  requested in 'inner_indices', potentially with the attribute 'variables' 
+#'  with additional auxiliary data. See details in the documentation of the 
+#'  parameter 'file_data_reader' of the function Start(). 
+#'@examples
+#'  data_path <- system.file('extdata', package = 'startR', mustWork = TRUE)
+#'  file_to_open <- file.path(data_path, 'obs/monthly_mean/tos/tos_200011.nc')
+#'  file_selectors <- c(dat = 'dat1', var = 'tos', sdate = '200011')
+#'  first_round_indices <- list(time = 1, latitude = 1:8, longitude = 1:16)
+#'  synonims <- list(dat = 'dat', var = 'var', sdate = 'sdate', time = 'time',
+#'                   latitude = 'latitude', longitude = 'longitude')
+#'  sub_array <- NcDataReader(file_to_open, NULL, file_selectors,
+#'                            first_round_indices, synonims)
+#'@seealso \code{\link{NcOpener}} \code{\link{NcDimReader}} 
+#'  \code{\link{NcCloser}} \code{\link{NcVarReader}}
+#'@import easyNCDF
+#'@export
 NcDataReader <- function(file_path = NULL, file_object = NULL, 
                          file_selectors = NULL, inner_indices = NULL,
                          synonims) {
+  close <- FALSE
   if (!is.null(file_object)) {
     file_to_read <- file_object
     file_path <- file_object$filename
   } else if (!is.null(file_path)) {
     file_to_read <- NcOpener(file_path)
+    close <- TRUE
   } else {
     stop("Either 'file_path' or 'file_object' must be provided.")
   }
@@ -39,7 +85,8 @@ NcDataReader <- function(file_path = NULL, file_object = NULL,
     position_of_var <- length(inner_indices)
   } else {
     stop("A 'var'/'variable' file dimension or inner dimension must be ",
-         "requested for NcDataReader() to read NetCDF files.")
+         "requested for NcDataReader() to read NetCDF files with more than ",
+         "one variable.")
   }
 
   inner_indices[[position_of_var]] <- sapply(inner_indices[[position_of_var]],
@@ -114,47 +161,66 @@ NcDataReader <- function(file_path = NULL, file_object = NULL,
     result <- easyNCDF::NcToArray(file_to_read, inner_indices, drop_var_dim = drop_var_dim,
                                   expect_all_indices = TRUE, allow_out_of_range = TRUE)
   }
-  names(dim(result)) <- sapply(names(dim(result)),
-    function(x) {
-      which_entry <- which(sapply(synonims, function(y) x %in% y))
-      if (length(which_entry) > 0) {
-        names(synonims)[which_entry]
-      } else {
-        x
+  if (!is.null(dim(result))) {
+    names(dim(result)) <- sapply(names(dim(result)),
+      function(x) {
+        which_entry <- which(sapply(synonims, function(y) x %in% y))
+        if (length(which_entry) > 0) {
+          names(synonims)[which_entry]
+        } else {
+          x
+        }
+      })
+  }
+  if (!is.null(result)) {
+    names(attr(result, 'variables')) <- sapply(names(attr(result, 'variables')),
+      function(x) {
+        which_entry <- which(sapply(synonims, function(y) x %in% y))
+        if (length(which_entry) > 0) {
+          names(synonims)[which_entry]
+        } else {
+          x
+        }
+      })
+    if (length(names(attr(result, 'variables'))) == 1) {
+      var_name <- names(attr(result, 'variables'))
+      units <- attr(result, 'variables')[[var_name]][['units']]
+      if (units %in% c('seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years')) {
+        if (units == 'seconds') {
+          units <- 'secs'
+        } else if (units == 'minutes') {
+          units <- 'mins'
+        }
+        result[] <- paste(result[], units)
+      } else if (grepl(' since ', units)) {
+        parts <- strsplit(units, ' since ')[[1]]
+        units <- parts[1]
+        if (units %in% c('second', 'seconds')) {
+          units <- 'secs'
+        } else if (units %in% c('minute', 'minutes')) {
+          units <- 'mins'
+        } else if (units == 'day') {
+          units <- 'days'
+        } else if (units %in% c('month', 'months')) {
+          result <- result * 30.5
+          units <- 'days'
+        }
+
+        new_array <- rep(as.POSIXct(parts[2], tz = 'UTC'), length(result)) + 
+                     as.difftime(result[], units = units)
+        #new_array <- seq(as.POSIXct(parts[2]), 
+        #                  length = max(result, na.rm = TRUE) + 1, 
+        #                  by = units)[result[] + 1]
+        dim(new_array) <- dim(result)
+        attr(new_array, 'variables') <- attr(result, 'variables')
+        result <- new_array
       }
-    })
-  names(attr(result, 'variables')) <- sapply(names(attr(result, 'variables')),
-    function(x) {
-      which_entry <- which(sapply(synonims, function(y) x %in% y))
-      if (length(which_entry) > 0) {
-        names(synonims)[which_entry]
-      } else {
-        x
-      }
-    })
-  if (length(names(attr(result, 'variables'))) == 1) {
-    var_name <- names(attr(result, 'variables'))
-    units <- attr(result, 'variables')[[var_name]][['units']]
-    if (units %in% c('seconds', 'minutes', 'hours', 'days', 'weeks', 'months', 'years')) {
-      if (units == 'seconds') {
-        units <- 'secs'
-      } else if (units == 'minutes') {
-        units <- 'mins'
-      }
-      result[] <- paste(result[], units)
-    } else if (grepl(' since ', units)) {
-      parts <- strsplit(units, ' since ')[[1]]
-      units <- parts[1]
-      if (units == 'seconds') {
-        units <- 'secs'
-      } else if (units == 'minutes') {
-        units <- 'mins'
-      }
-      new_array <- seq(as.POSIXct(parts[2]), length = max(result, na.rm = TRUE) + 1, by = units)[result[] + 1]
-      dim(new_array) <- dim(result)
-      attr(new_array, 'variables') <- attr(result, 'variables')
-      result <- new_array
     }
   }
+
+  if (close) {
+    NcCloser(file_to_read)
+  }
+
   result
 }

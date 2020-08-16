@@ -1,7 +1,61 @@
+#'CDO Remap Data Transformation for 'startR'
+#'
+#'This is a transform function that uses CDO software to remap longitude-latitude 
+#'data subsets onto a specified target grid, intended for use as parameter 
+#''transform' in a Start() call. This function complies with the input/output 
+#'interface required by Start() defined in the documentation for the parameter 
+#''transform' of function Start().\cr\cr
+#'This function uses the function CDORemap() in the package 's2dverification' to 
+#'perform the interpolation, hence CDO is required to be installed.
+#'
+#'@param data_array A data array to be transformed. See details in the 
+#'  documentation of the parameter 'transform' of the function Start().
+#'@param variables A list of auxiliary variables required for the transformation, 
+#'  automatically provided by Start(). See details in the documentation of the 
+#'  parameter 'transform' of the function Start().
+#'@param file_selectors A charcter vector indicating the information of the path of
+#'  the file parameter 'data_array' comes from. See details in the documentation of
+#'  the parameter 'transform' of the function Start(). The default value is NULL.
+#'@param \dots A list of additional parameters to adjust the transform process, 
+#'  as provided in the parameter 'transform_params' in a Start() call. See details
+#'  in the documentation of the parameter 'transform' of the function Start().
+#'
+#'@return An array with the same amount of dimensions as the input data array, 
+#'  potentially with different sizes, and potentially with the attribute 
+#'  'variables' with additional auxiliary data. See details in the documentation 
+#'  of the parameter 'transform' of the function Start().
+#'@seealso \code{\link[s2dverification]{CDORemap}}
+#'
+#'@examples
+#'# Used in Start():
+#'  data_path <- system.file('extdata', package = 'startR')
+#'  path_obs <- file.path(data_path, 'obs/monthly_mean/$var$/$var$_$sdate$.nc')
+#'  sdates <- c('200011')
+#'  \donttest{
+#'  data <- Start(dat = list(list(path = path_obs)),
+#'                var = 'tos',
+#'                sdate = sdates,
+#'                time = 'all',
+#'                latitude = values(list(-60, 60)),
+#'                latitude_reorder = Sort(decreasing = TRUE),
+#'                longitude = values(list(-120, 120)),
+#'                longitude_reorder = CircularSort(-180, 180),
+#'                transform = CDORemapper,
+#'                transform_params = list(grid = 'r360x181',
+#'                                        method = 'conservative',
+#'                                        crop = c(-120, 120, -60, 60)),
+#'                transform_vars = c('latitude', 'longitude'),
+#'                return_vars = list(latitude = 'dat',
+#'                                   longitude = 'dat',
+#'                                   time = 'sdate'),
+#'                retrieve = FALSE)
+#' }
+#'@importFrom s2dverification CDORemap
+#'@export
 CDORemapper <- function(data_array, variables, file_selectors = NULL, ...) {
   file_dims <- names(file_selectors)
-  known_lon_names <- s2dverification:::.KnownLonNames()
-  known_lat_names <- s2dverification:::.KnownLatNames()
+  known_lon_names <- .KnownLonNames()
+  known_lat_names <- .KnownLatNames()
   if (!any(known_lon_names %in% names(variables)) ||
       !any(known_lat_names %in% names(variables))) {
     stop("The longitude and latitude variables must be requested in ",

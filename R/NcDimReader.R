@@ -1,15 +1,58 @@
-# Parameter 'file_selectors' expects a named character vector of single 
-# file dimension selectors.
-# Parameter 'inner_indices' expects a named list of numeric or 
-# character string vectors.
+#'NetCDF dimension reader for 'startR'
+#'
+#'A dimension reader function for NetCDF files, intended for use as parameter 
+#''file_dim_reader' in a Start() call. It complies with the input/output 
+#'interface required by Start() defined in the documentation for the parameter 
+#''file_dim_reader' of that function.\cr\cr
+#'This function uses the function NcReadDims() in the package 'easyNCDF'.
+#'
+#'@param file_path A character string indicating the path to the data file to 
+#'  read. See details in the documentation of the parameter 'file_dim_reader' 
+#'  of the function Start(). The default value is NULL.
+#'@param file_object An open connection to a NetCDF file, optionally with 
+#'  additional header information. See details in the documentation of the 
+#'  parameter 'file_dim_reader' of the function Start(). The default value is 
+#'  NULL.
+#'@param file_selectors  A named list containing the information of the path of 
+#'  the file to read data from. It is automatically provided by Start(). See 
+#'  details in the documentation of the parameter 'file_dim_reader' of the 
+#'  function Start(). The default value is NULL.
+#'@param inner_indices A named list of numeric vectors indicating the indices 
+#'  to take from each of the inner dimensions in the requested file. It is 
+#'  automatically provided by Start(). See details in the documentation of the 
+#'  parameter 'file_dim_reader' of the function Start(). The default value is 
+#'  NULL.
+#'@param synonims A named list indicating the synonims for the dimension names 
+#'  to look for in the requested file, exactly as provided in the parameter 
+#'  'synonims' in a Start() call. See details in the documentation of the 
+#'  parameter 'file_dim_reader' of the function Start().
+#'
+#'@return A named numeric vector with the names and sizes of the dimensions of 
+#'  the requested file.
+#'@examples
+#'  data_path <- system.file('extdata', package = 'startR')
+#'  file_to_open <- file.path(data_path, 'obs/monthly_mean/tos/tos_200011.nc')
+#'  file_selectors <- c(dat = 'dat1', var = 'tos', sdate = '200011')
+#'  first_round_indices <- list(time = 1, latitude = 1:8, longitude = 1:16)
+#'  synonims <- list(dat = 'dat', var = 'var', sdate = 'sdate', time = 'time',
+#'                   latitude = 'latitude', longitude = 'longitude')
+#'  dim_of_file <- NcDimReader(file_to_open, NULL, file_selectors,
+#'                             first_round_indices, synonims)
+#'@seealso \code{\link{NcOpener}} \code{\link{NcDataReader}} 
+#'  \code{\link{NcCloser}} \code{\link{NcVarReader}}
+#'@import easyNCDF
+#'@importFrom stats setNames 
+#'@export
 NcDimReader <- function(file_path = NULL, file_object = NULL, 
                         file_selectors = NULL, inner_indices = NULL,
                         synonims) {
+  close <- FALSE
   if (!is.null(file_object)) {
     file_to_read <- file_object
     file_path <- file_object$filename
   } else if (!is.null(file_path)) {
     file_to_read <- NcOpener(file_path)
+    close <- TRUE
   } else {
     stop("Either 'file_path' or 'file_object' must be provided.")
   }
@@ -30,7 +73,7 @@ NcDimReader <- function(file_path = NULL, file_object = NULL,
   }
 
   if ((length(vars_to_read) == 1) && (vars_to_read[1] == 'var_names')) {
-    setNames(length(vars_in_file), var_tag)
+    result <- setNames(length(vars_in_file), var_tag)
   } else {
     vars_to_read <- sapply(vars_to_read, 
       function(x) {
@@ -64,6 +107,12 @@ NcDimReader <- function(file_path = NULL, file_object = NULL,
     } else {
       read_dims <- read_dims[-which(names(read_dims) == 'var')]
     }
-    read_dims
+    result <- read_dims
   }
+
+  if (close) {
+    NcCloser(file_to_read)
+  }
+
+  result
 }

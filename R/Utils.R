@@ -1,6 +1,59 @@
-indices <- function(x) {
-  attr(x, 'indices') <- TRUE
-  x
+#'@import abind
+#'@importFrom ClimProjDiags Subset
+.chunk <- function(chunk, n_chunks, selectors) {
+  if (any(chunk > n_chunks)) {
+    stop("Requested chunk index out of bounds.")
+  }
+  if (length(chunk) == 1 && length(n_chunks) == 1) {
+    if (!is.null(attr(selectors, 'chunk'))) {
+      attr(selectors, 'chunk') <- c((attr(selectors, 'chunk')['chunk'] - 1) * n_chunks + 
+                                      chunk,
+                                    attr(selectors, 'chunk')['n_chunks'] * n_chunks)
+    } else {
+      attr(selectors, 'chunk') <- c(chunk = unname(chunk), n_chunks = unname(n_chunks))
+    }
+  } else {
+    # Chunking arrays of multidimensional selectors. 
+    # This should be done in Start.R but implies modifications.
+    if (length(chunk) != length(n_chunks)) {
+      stop("Wrong chunk specification.")
+    }
+    #NOTE: 1. It should be for above? not nultidimensional selector
+    #      2. it was !is.null before, but it should be is.null (?)
+    #    if (!is.null(attr(selectors, 'values'))) {
+    #      stop("Multidimensional chunking only available when selector ",
+    #           "values provided.")
+    #    }
+    if (is.null(dim(selectors))) {
+      stop("Multidimensional chunking only available when multidimensional ",
+           "selector values provided.")
+    }
+    if (length(dim(selectors)) != length(chunk)) {
+      stop("As many chunk indices and chunk lengths as dimensions in the ",
+           "multidimensional selector array must be specified.")
+    }
+    old_indices <- attr(selectors, 'indices')
+    old_values <- attr(selectors, 'values')
+    selectors <- ClimProjDiags::Subset(selectors, 1:length(chunk), 
+                                       lapply(1:length(chunk), 
+                               function(x) {
+                                 n_indices <- dim(selectors)[x]
+                                 chunk_sizes <- rep(floor(n_indices / n_chunks[x]), n_chunks[x])
+                                 chunks_to_extend <- n_indices - chunk_sizes[1] * n_chunks[x]
+                                 if (chunks_to_extend > 0) {
+                                   chunk_sizes[1:chunks_to_extend] <- chunk_sizes[1:chunks_to_extend] + 1
+                                 }
+                                 chunk_size <- chunk_sizes[chunk[x]]
+                                 offset <- 0
+                                 if (chunk[x] > 1) {
+                                   offset <- sum(chunk_sizes[1:(chunk[x] - 1)])
+                                 }
+                                 1:chunk_sizes[chunk[x]] + offset
+                               }))
+    attr(selectors, 'indices') <- old_indices
+    attr(selectors, 'values') <- old_values
+  }
+  selectors
 }
 
 .ReplaceVariablesInString <- function(string, replace_values, allow_undefined_key_vars = FALSE) {
@@ -58,6 +111,16 @@ indices <- function(x) {
   # path to the file, but not the ones in the file name itself. To keep the
   # expressions in the file name, the parameter permissive can be set to 
   # TRUE. To replace all the expressions it can be set to FALSE.
+  
+  # Tests
+  #a <- "/esarchive/exp/ecearth/a13c/3hourly/$var$_*/$var$_*-LR_historical_r1i1p1f1_gr_$chunk$.nc"
+  #b <- "/esarchive/exp/ecearth/a13c/3hourly/psl_f6h/psl_E3hrPt_EC-Earth3-LR_historical_r1i1p1f1_gr_195001010000-195001312100.nc"
+  #c <- list(dat = 'dat1', var = 'psl', chunk = '195001010000-195001312100')
+  #d <- c('dat', 'var', 'chunk')
+  #e <- 'dat1'
+  #f <- FALSE #TRUE/0/1/2/3
+  #r <- .ReplaceGlobExpressions(a, b, c, d, e, f)
+  
   clean <- function(x) {
     if (nchar(x) > 0) {
       x <- gsub('\\\\', '', x)
@@ -69,35 +132,51 @@ indices <- function(x) {
       x
     }
   }
-
+  
   strReverse <- function(x) sapply(lapply(strsplit(x, NULL), rev), paste, collapse = "")
-
+  
+  if (permissive == 0) {
+    permissive <- FALSE
+  } else {
+    if (permissive == TRUE) {
+      permissive_levels <- 1
+    } else {
+      permissive_levels <- round(permissive[1])
+      permissive <- TRUE
+    }
+  }
+  
   if (permissive) {
     actual_path_chunks <- strsplit(actual_path, '/')[[1]]
-    actual_path <- paste(actual_path_chunks[-length(actual_path_chunks)], collapse = '/')
-    file_name <- tail(actual_path_chunks, 1)
+    if (permissive_levels >= length(actual_path_chunks)) {
+      stop("Error: Provided levels out of scope in parameter 'permissive'.")
+    }
+    permissive_levels <- 1:permissive_levels
+    permissive_levels <- length(actual_path_chunks) - (rev(permissive_levels) - 1)
+    actual_path <- paste(actual_path_chunks[-permissive_levels], collapse = '/')
+    file_name <- paste(actual_path_chunks[permissive_levels], collapse = '/')
     if (length(actual_path_chunks) > 1) {
       file_name <- paste0('/', file_name)
     }
     path_with_globs_chunks <- strsplit(path_with_globs, '/')[[1]]
-    path_with_globs <- paste(path_with_globs_chunks[-length(path_with_globs_chunks)], 
+    path_with_globs <- paste(path_with_globs_chunks[-permissive_levels], 
                              collapse = '/')
-    path_with_globs <- .ReplaceVariablesInString(path_with_globs, replace_values)
-    file_name_with_globs <- tail(path_with_globs_chunks, 1)
+    path_with_globs_no_tags <- .ReplaceVariablesInString(path_with_globs, replace_values)
+    file_name_with_globs <- paste(path_with_globs_chunks[permissive_levels], collapse = '/')
     if (length(path_with_globs_chunks) > 1) {
       file_name_with_globs <- paste0('/', file_name_with_globs)
     }
     right_known <- head(strsplit(file_name_with_globs, '*', fixed = TRUE)[[1]], 1)
     right_known_no_tags <- .ReplaceVariablesInString(right_known, replace_values)
-    path_with_globs_rx <- utils::glob2rx(paste0(path_with_globs, right_known_no_tags))
-    match <- regexpr(gsub('$', '', path_with_globs_rx, fixed = TRUE), paste0(actual_path, file_name))
+    path_with_globs_no_tags_rx <- utils::glob2rx(paste0(path_with_globs_no_tags, right_known_no_tags))
+    match <- regexpr(gsub('$', '', path_with_globs_no_tags_rx, fixed = TRUE), paste0(actual_path, file_name))
     if (match != 1) {
       stop("Incorrect parameters to replace glob expressions. The path with expressions does not match the actual path.")
     }
-    if (attr(match, 'match.length') - nchar(right_known_no_tags) < nchar(actual_path)) {
-      path_with_globs <- paste0(path_with_globs, right_known_no_tags, '*')
-      file_name_with_globs <- sub(right_known, '/*', file_name_with_globs)
-    } 
+    #if (attr(match, 'match.length') - nchar(right_known_no_tags) < nchar(actual_path)) {
+    #  path_with_globs_no_tags <- paste0(path_with_globs_no_tags, right_known_no_tags, '*')
+    #  file_name_with_globs <- sub(right_known, '/*', file_name_with_globs)
+    #}
   }
   path_with_globs_rx <- utils::glob2rx(path_with_globs)
   values_to_replace <- c()
@@ -155,16 +234,17 @@ indices <- function(x) {
       }
     }
   }
-
+  
+  actual_path_with_tags <- actual_path
   if (length(tags_to_replace_starts) > 0) {
     reorder <- sort(tags_to_replace_starts, index.return = TRUE)
     tags_to_replace_starts <- reorder$x
     values_to_replace <- values_to_replace[reorder$ix]
     tags_to_replace_ends <- tags_to_replace_ends[reorder$ix]
     while (length(values_to_replace) > 0) {
-      actual_path <- paste0(substr(actual_path, 1, head(tags_to_replace_starts, 1) - 1),
-                           '$', head(values_to_replace, 1), '$',
-                           substr(actual_path, head(tags_to_replace_ends, 1) + 1, nchar(actual_path)))
+      actual_path_with_tags <- paste0(substr(actual_path_with_tags, 1, head(tags_to_replace_starts, 1) - 1),
+                                      '$', head(values_to_replace, 1), '$',
+                                      substr(actual_path_with_tags, head(tags_to_replace_ends, 1) + 1, nchar(actual_path_with_tags)))
       extra_chars <- nchar(head(values_to_replace, 1)) + 2 - (head(tags_to_replace_ends, 1) - head(tags_to_replace_starts, 1) + 1)
       values_to_replace <- values_to_replace[-1]
       tags_to_replace_starts <- tags_to_replace_starts[-1]
@@ -173,85 +253,144 @@ indices <- function(x) {
       tags_to_replace_ends <- tags_to_replace_ends + extra_chars
     }
   }
-
+  
   if (give_warning) {
     .warning(paste0("Too complex path pattern specified for ", dataset_name, 
                     ". Double check carefully the '$Files' fetched for this dataset or specify a simpler path pattern."))
   }
-
+  
   if (permissive) {
-    paste0(actual_path, file_name_with_globs)
+    paste0(actual_path_with_tags, file_name_with_globs)
   } else {
-    actual_path
+    actual_path_with_tags
   }
 }
 
 .FindTagValue <- function(path_with_globs_and_tag, actual_path, tag) {
+  
+  addition_warning = FALSE
+  
   if (!all(sapply(c(path_with_globs_and_tag, actual_path, tag), is.character))) {
     stop("All 'path_with_globs_and_tag', 'actual_path' and 'tag' must be character strings.")
   }
-
+  
   if (grepl('$', tag, fixed = TRUE)) {
     stop("The provided 'tag' must not contain '$' symbols.")
   }
   full_tag <- paste0('$', tag, '$')
-
+  
   if (!grepl(full_tag, path_with_globs_and_tag, fixed = TRUE)) {
     stop("The provided 'path_with_globs_and_tag' must contain the tag in 'tag' surrounded by '$' symbols.")
   }
-
+  
   parts <- strsplit(path_with_globs_and_tag, full_tag, fixed = TRUE)[[1]]
   if (length(parts) == 1) {
     parts <- c(parts, '')
   }
   parts[1] <- paste0('^', parts[1])
   parts[length(parts)] <- paste0(parts[length(parts)], '$')
-
+  
   # Group the parts in 2 groups, in a way that both groups have a number
   # of characters as similar as possible.
   part_lengths <- sapply(parts, nchar)
   group_len_diffs <- sapply(1:(length(parts) - 1), 
-    function(x) {
-      sum(part_lengths[(x + 1):length(parts)]) - sum(part_lengths[1:x])
-    }
+                            function(x) {
+                              sum(part_lengths[(x + 1):length(parts)]) - sum(part_lengths[1:x])
+                            }
   )
   clp <- chosen_left_part <- which.min(group_len_diffs)[1]
-
+  
   left_expr <- paste(parts[1:clp], collapse = full_tag)
+  
+  #because ? means sth, use . (any char) to substitute ?
   left_expr <- gsub('?', '.', left_expr, fixed = TRUE)
-  # The .*? will force lazy evaluation (find the shortest match from the 
-  # beginning of the actual_path).
+  test_left_expr <- left_expr
+  
+  # because * means zero or more char, use . to substitute *. 
+  # And the * behind . means zero or more char. '?' for lazy evaluation.
   left_expr <- gsub('*', '.*?', left_expr, fixed = TRUE)
   left_expr <- gsub(full_tag, '.*?', left_expr, fixed = TRUE)
+  
+  # To test if the pattern matches only one... dont use lazy evaluation
+  test_left_expr <- gsub('*', '.*', test_left_expr, fixed = TRUE)
+  test_left_expr <- gsub(full_tag, '.*', test_left_expr, fixed = TRUE)
+  
+  # Find the match chars from left
   left_match <- regexec(left_expr, actual_path)[[1]]
+  test_left_match <- regexec(test_left_expr, actual_path)[[1]]
+  
   if (left_match < 0) {
     stop("Unexpected error in .FindTagValue.")
   }
-
+  
+  if (attr(test_left_match, "match.length") != attr(left_match, "match.length")) {
+    addition_warning = TRUE
+    warning("Detect more than one possibility derived from the global expression of path.")
+  }
+  
+  #Cut down the left match part
+  actual_path_sub <- substr(actual_path, 
+                            attr(left_match, 'match.length') + 1, 
+                            nchar(actual_path))
+  
+  #----------Search match chars from right
   right_expr <- paste(parts[(clp + 1):(length(parts))], collapse = full_tag)
   right_expr <- gsub('?', '.', right_expr, fixed = TRUE)
+  
+  test_right_expr <- right_expr
   # For lazy evaulation to work, pattern and string have to be reversed.
   right_expr <- gsub('*', '.*?', right_expr, fixed = TRUE)
   right_expr <- gsub(full_tag, '.*?', right_expr, fixed = TRUE)
   right_expr <- gsub('$', '^', right_expr, fixed = TRUE)
+  
+  # To test if the pattern matches only one... dont use lazy evaluation
+  test_right_expr <- gsub('*', '.*', test_right_expr, fixed = TRUE)
+  test_right_expr <- gsub(full_tag, '.*', test_right_expr, fixed = TRUE)
+  test_right_expr <- gsub('$', '^', test_right_expr, fixed = TRUE)
+  
   rev_str <- function(s) {
     paste(rev(strsplit(s, NULL)[[1]]), collapse = '')
   }
+  
   right_expr <- rev_str(right_expr)
+  test_right_expr <- rev_str(test_right_expr)
+  
   right_expr <- gsub('?*.', '.*?', right_expr, fixed = TRUE)
   right_match <- regexec(right_expr, rev_str(actual_path))[[1]]
+  
+  test_right_expr <- gsub('*.', '.*', test_right_expr, fixed = TRUE)
+  test_right_match <- regexec(test_right_expr, rev_str(actual_path_sub))[[1]]
+  
   if (right_match < 0) {
     stop("Unexpected error in .FindTagValue.")
   }
+  
+  if (attr(test_right_match, "match.length") != attr(right_match, "match.length")) {
+    addition_warning = TRUE
+    warning(paste0("Detect more than one possibility derived from the global ",
+                   "expression of path."))
+  }
+  
+  #-------------get tag value
   right_match[] <- nchar(actual_path) - 
-                   (right_match[] + attr(right_match, 'match.length') - 1) + 1
-
+    (right_match[] + attr(right_match, 'match.length') - 1) + 1
+  
+  if (addition_warning) {
+    warning(paste0("The extracted parameter ", full_tag, " is ",
+                   substr(actual_path, left_match + attr(left_match, 'match.length'), 
+                          right_match - 1),
+                   ". Check if all the desired files were read in. ",
+                   "If not, specify parameter '", tag, 
+                   "' by values instead of indices, or set parameter ",
+                   "'path_glob_permissive' as TRUE"))
+  }
+  
   if ((left_match + attr(left_match, 'match.length')) > 
       (right_match - 1)) {
     NULL
   } else {
     substr(actual_path, left_match + attr(left_match, 'match.length'),
-                        right_match - 1)
+           right_match - 1)
   }
 }
 
@@ -260,7 +399,7 @@ indices <- function(x) {
   # Default: new line at end of message, indent to 0, exdent to 3, 
   #  collapse to \n*
   args <- list(...)
-
+  
   ## In case we need to specify message arguments
   if (!is.null(args[["appendLF"]])) {
     appendLF <- args[["appendLF"]]
@@ -276,7 +415,7 @@ indices <- function(x) {
   }
   args[["appendLF"]] <- NULL
   args[["domain"]] <- NULL
-
+  
   ## To modify strwrap indent and exdent arguments
   if (!is.null(args[["indent"]])) {
     indent <- args[["indent"]]
@@ -290,7 +429,7 @@ indices <- function(x) {
   }
   args[["indent"]] <- NULL
   args[["exdent"]] <- NULL
-
+  
   ## To modify paste collapse argument
   if (!is.null(args[["collapse"]])) {
     collapse <- args[["collapse"]]
@@ -298,7 +437,7 @@ indices <- function(x) {
     collapse <- "\n*"
   }
   args[["collapse"]] <- NULL
-
+  
   ## Message tag
   if (!is.null(args[["tag"]])) {
     tag <- args[["tag"]]
@@ -306,10 +445,10 @@ indices <- function(x) {
     tag <- "* "
   }
   args[["tag"]] <- NULL
-
+  
   message(paste0(tag, paste(strwrap(
     args, indent = indent, exdent = exdent
-    ), collapse = collapse)), appendLF = appendLF, domain = domain)
+  ), collapse = collapse)), appendLF = appendLF, domain = domain)
 }
 
 .warning <- function(...) {
@@ -317,7 +456,7 @@ indices <- function(x) {
   # Default: no call information, indent to 0, exdent to 3, 
   #  collapse to \n
   args <- list(...)
-
+  
   ## In case we need to specify warning arguments
   if (!is.null(args[["call."]])) {
     call <- args[["call."]]
@@ -347,7 +486,7 @@ indices <- function(x) {
   args[["immediate."]] <- NULL
   args[["noBreaks."]] <- NULL
   args[["domain"]] <- NULL
-
+  
   ## To modify strwrap indent and exdent arguments
   if (!is.null(args[["indent"]])) {
     indent <- args[["indent"]]
@@ -361,7 +500,7 @@ indices <- function(x) {
   }
   args[["indent"]] <- NULL
   args[["exdent"]] <- NULL
-
+  
   ## To modify paste collapse argument
   if (!is.null(args[["collapse"]])) {
     collapse <- args[["collapse"]]
@@ -369,7 +508,7 @@ indices <- function(x) {
     collapse <- "\n!"
   }
   args[["collapse"]] <- NULL
-
+  
   ## Warning tag
   if (!is.null(args[["tag"]])) {
     tag <- args[["tag"]]
@@ -377,27 +516,72 @@ indices <- function(x) {
     tag <- "! Warning: "
   }
   args[["tag"]] <- NULL
-
+  
   warning(paste0(tag, paste(strwrap(
     args, indent = indent, exdent = exdent
-    ), collapse = collapse)),  call. = call, immediate. = immediate, 
-    noBreaks. = noBreaks, domain = domain)
+  ), collapse = collapse)),  call. = call, immediate. = immediate, 
+  noBreaks. = noBreaks, domain = domain)
 }
 
 # Function to permute arrays of non-atomic elements (e.g. POSIXct)
+# Function to permute arrays of non-atomic elements (e.g. POSIXct)
 .aperm2 <- function(x, new_order) {
-  y <- array(1:length(x), dim = dim(x))
-  y <- aperm(y, new_order)
   old_dims <- dim(x)
-  x <- x[as.vector(y)]
+  attr_bk <- attributes(x)
+  if ('dim' %in% names(attr_bk)) {
+    attr_bk[['dim']] <- NULL
+  }
+  if (is.numeric(x)) {
+    x <- aperm(x, new_order)
+  } else {
+    y <- array(1:length(x), dim = dim(x))
+    y <- aperm(y, new_order)
+    x <- x[as.vector(y)]
+  }
   dim(x) <- old_dims[new_order]
+  attributes(x) <- c(attributes(x), attr_bk)
   x
+}
+
+# Function to bind arrays of non-atomic elements (e.g. POSIXct)
+# 'x' and 'y' must have dimension names
+# parameter 'along' must be a dimension name
+.abind2 <- function(x, y, along) {
+  x_along <- which(names(dim(x)) == along)
+  if (x_along != length(dim(x))) {
+    tmp_order_x <- c((1:length(dim(x)))[-x_along], x_along)
+    x <- .aperm2(x, tmp_order_x)
+  }
+  y_along <- which(names(dim(y)) == along)
+  if (y_along != length(dim(y))) {
+    tmp_order_y <- c((1:length(dim(y)))[-y_along], y_along)
+    y <- .aperm2(y, tmp_order_y)
+  }
+  r <- c(x, y)
+  new_dims <- dim(x)
+  new_dims[length(new_dims)] <- dim(x)[length(dim(x))] + dim(y)[length(dim(y))]
+  dim(r) <- new_dims
+  if (x_along != length(dim(x))) {
+    final_order <- NULL
+    if (x_along > 1) {
+      final_order <- c(final_order, (1:length(dim(r)))[1:(x_along - 1)])
+    }
+    final_order <- c(final_order, length(dim(r)))
+    final_order <- c(final_order, (1:length(dim(r)))[x_along:(length(dim(r)) - 1)])
+    r <- .aperm2(r, final_order)
+  }
+  r
 }
 
 # This function is a helper for the function .MergeArrays.
 # It expects as inputs two named numeric vectors, and it extends them
 # with dimensions of length 1 until an ordered common dimension
 # format is reached.
+# The first output is dims1 extended with 1s.
+# The second output is dims2 extended with 1s.
+# The third output is a merged dimension vector. If dimensions with
+# the same name are found in the two inputs, and they have a different
+# length, the maximum is taken.
 .MergeArrayDims <- function(dims1, dims2) {
   new_dims1 <- c()
   new_dims2 <- c()
@@ -425,7 +609,7 @@ indices <- function(x) {
     new_dims1 <- c(new_dims1, dims_to_add)
     new_dims2 <- c(new_dims2, dims2)
   }
-  list(new_dims1, new_dims2)
+  list(new_dims1, new_dims2, pmax(new_dims1, new_dims2))
 }
 
 # This function takes two named arrays and merges them, filling with
@@ -440,33 +624,216 @@ indices <- function(x) {
 #    'a'   'b'   'c'   'e'   'd'   'f'   'g'
 #     2     4     3     7     5     9     11
 .MergeArrays <- function(array1, array2, along) {
-  if (!(identical(names(dim(array1)), names(dim(array2))) &&
-      identical(dim(array1)[-which(names(dim(array1)) == along)],
-                dim(array2)[-which(names(dim(array2)) == along)]))) {
-    new_dims <- .MergeArrayDims(dim(array1), dim(array2))
-    dim(array1) <- new_dims[[1]]
-    dim(array2) <- new_dims[[2]]
-    for (j in 1:length(dim(array1))) {
-      if (names(dim(array1))[j] != along) {
-        if (dim(array1)[j] != dim(array2)[j]) {
-          if (which.max(c(dim(array1)[j], dim(array2)[j])) == 1) {
-            na_array_dims <- dim(array2)
-            na_array_dims[j] <- dim(array1)[j] - dim(array2)[j]
-            na_array <- array(dim = na_array_dims)
-            array2 <- abind(array2, na_array, along = j)
-            names(dim(array2)) <- names(na_array_dims)
-          } else {
-            na_array_dims <- dim(array1)
-            na_array_dims[j] <- dim(array2)[j] - dim(array1)[j]
-            na_array <- array(dim = na_array_dims)
-            array1 <- abind(array1, na_array, along = j)
-            names(dim(array1)) <- names(na_array_dims)
+  if (!(is.null(array1) || is.null(array2))) {
+    if (!(identical(names(dim(array1)), names(dim(array2))) &&
+          identical(dim(array1)[-which(names(dim(array1)) == along)],
+                    dim(array2)[-which(names(dim(array2)) == along)]))) {
+      new_dims <- .MergeArrayDims(dim(array1), dim(array2))
+      dim(array1) <- new_dims[[1]]
+      dim(array2) <- new_dims[[2]]
+      for (j in 1:length(dim(array1))) {
+        if (names(dim(array1))[j] != along) {
+          if (dim(array1)[j] != dim(array2)[j]) {
+            if (which.max(c(dim(array1)[j], dim(array2)[j])) == 1) {
+              na_array_dims <- dim(array2)
+              na_array_dims[j] <- dim(array1)[j] - dim(array2)[j]
+              na_array <- array(dim = na_array_dims)
+              array2 <- abind(array2, na_array, along = j)
+              names(dim(array2)) <- names(na_array_dims)
+            } else {
+              na_array_dims <- dim(array1)
+              na_array_dims[j] <- dim(array2)[j] - dim(array1)[j]
+              na_array <- array(dim = na_array_dims)
+              array1 <- abind(array1, na_array, along = j)
+              names(dim(array1)) <- names(na_array_dims)
+            }
           }
         }
       }
     }
+    if (!(along %in% names(dim(array2)))) {
+      stop("The dimension specified in 'along' is not present in the ",
+           "provided arrays.")
+    }
+    array1 <- abind(array1, array2, along = which(names(dim(array1)) == along))
+    names(dim(array1)) <- names(dim(array2))
+  } else if (is.null(array1)) {
+    array1 <- array2
   }
-  array1 <- abind(array1, array2, along = which(names(dim(array1)) == along))
-  names(dim(array1)) <- names(dim(array2))
   array1
+}
+
+# Takes as input a list of arrays. The list must have named dimensions.
+.MergeArrayOfArrays <- function(array_of_arrays) {
+  MergeArrays <- .MergeArrays
+  array_dims <- (dim(array_of_arrays))
+  dim_names <- names(array_dims)
+  
+  # Merge the chunks.
+  for (dim_index in 1:length(dim_names)) {
+    dim_sub_array_of_chunks <- dim_sub_array_of_chunk_indices <- NULL
+    if (dim_index < length(dim_names)) {
+      dim_sub_array_of_chunks <- array_dims[(dim_index + 1):length(dim_names)]
+      names(dim_sub_array_of_chunks) <- dim_names[(dim_index + 1):length(dim_names)]
+      dim_sub_array_of_chunk_indices <- dim_sub_array_of_chunks
+      sub_array_of_chunk_indices <- array(1:prod(dim_sub_array_of_chunk_indices),
+                                          dim_sub_array_of_chunk_indices)
+    } else {
+      sub_array_of_chunk_indices <- NULL
+    }
+    sub_array_of_chunks <- vector('list', prod(dim_sub_array_of_chunks))
+    dim(sub_array_of_chunks) <- dim_sub_array_of_chunks
+    for (i in 1:prod(dim_sub_array_of_chunks)) {
+      if (!is.null(sub_array_of_chunk_indices)) {
+        chunk_sub_indices <- which(sub_array_of_chunk_indices == i, arr.ind = TRUE)[1, ]
+      } else {
+        chunk_sub_indices <- NULL
+      }
+      for (j in 1:(array_dims[dim_index])) {
+        new_chunk <- do.call('[[', c(list(x = array_of_arrays),
+                                     as.list(c(j, chunk_sub_indices))))
+        if (is.null(new_chunk)) {
+          stop("Chunks missing.")
+        }
+        if (is.null(sub_array_of_chunks[[i]])) {
+          sub_array_of_chunks[[i]] <- new_chunk
+        } else {
+          sub_array_of_chunks[[i]] <- MergeArrays(sub_array_of_chunks[[i]],
+                                                  new_chunk,
+                                                  dim_names[dim_index])
+        }
+      }
+    }
+    array_of_arrays <- sub_array_of_chunks
+    rm(sub_array_of_chunks)
+    gc()
+  }
+  
+  array_of_arrays[[1]]
+}
+
+.MergeChunks <- function(shared_dir, suite_id, remove) {
+  MergeArrays <- .MergeArrays
+  
+  args <- NULL
+  shared_dir <- paste0(shared_dir, '/STARTR_CHUNKING_', suite_id)
+  
+  all_chunk_files_original <- list.files(paste0(shared_dir, '/'), '.*\\.Rds$')
+  all_chunk_files <- gsub('\\.Rds$', '', all_chunk_files_original)
+  chunk_filename_parts_all_components <- strsplit(all_chunk_files, '__')
+  all_components <- sapply(chunk_filename_parts_all_components, '[[', 1)
+  components <- unique(all_components)
+  result <- vector('list', length(components))
+  names(result) <- components
+  for (component in components) {
+    chunk_files_original <- all_chunk_files_original[which(all_components == component)]
+    chunk_filename_parts <- chunk_filename_parts_all_components[which(all_components == component)]
+    chunk_filename_parts <- lapply(chunk_filename_parts, '[', -1)
+    if (length(unique(sapply(chunk_filename_parts, length))) != 1) {
+      stop("Detected chunks with more dimensions than others.")
+    }
+    dim_names <- sapply(chunk_filename_parts[[1]],
+                        # TODO: strsplit by the last '_' match, not the first.
+                        function(x) strsplit(x, '_')[[1]][1])
+    # TODO check all files have exactly the same dimnames
+    found_chunk_indices <- sapply(chunk_filename_parts,
+                                  function(x) as.numeric(sapply(strsplit(x, '_'), '[[', 2)))
+    found_chunk_indices <- array(found_chunk_indices,
+                                 dim = c(length(dim_names),
+                                         length(found_chunk_indices) / length(dim_names))
+    )
+    found_chunks_str <- apply(found_chunk_indices, 2, paste, collapse = '_')
+    
+    if (length(args) > 0) {
+      if ((length(args) %% 2) != 0) {
+        stop("Wrong number of parameters.")
+      }
+      expected_dim_names <- args[(1:(length(args) / 2) - 1) * 2 + 1]
+      if (any(!is.character(expected_dim_names))) {
+        stop("Expected dimension names in parameters at odd positions.")
+      }
+      dim_indices <- args[(1:(length(args) / 2) - 1) * 2 + 2]
+      if (!any(dim_indices == 'all')) {
+        stop("Expected one dimension index to be 'all'.")
+      }
+      dim_to_merge <- which(dim_indices == 'all')
+      if (length(dim_indices) > 1) {
+        if (!all(is.numeric(dim_indices[-dim_to_merge]))) {
+          stop("Expected all dimension index but one to be numeric.")
+        }
+      }
+      # Check expected dim names match dim names
+      ## TODO
+      # Merge indices that vary along dim_to_merge whereas other fixed by dim_indices
+      # REMOVE FILES
+      ## TODO
+      stop("Feature not implemented.")
+    } else {
+      chunks_indices <- 1:length(dim_names)
+      chunks_indices <- lapply(chunks_indices, function(x) sort(unique(found_chunk_indices[x, ])))
+      names(chunks_indices) <- dim_names
+      
+      # Load all found chunks into the array 'array_of_chuks'.
+      array_dims <- sapply(chunks_indices, length)
+      names(array_dims) <- dim_names
+      array_of_chunks <- vector('list', prod(array_dims))
+      dim(array_of_chunks) <- array_dims
+      array_of_chunks_indices <- array(1:prod(array_dims), array_dims)
+      for (i in 1:prod(array_dims)) {
+        chunk_indices <- which(array_of_chunks_indices == i, arr.ind = TRUE)[1, ]
+        j <- 1
+        chunk_indices_on_file <- sapply(chunk_indices,
+                                        function(x) {
+                                          r <- chunks_indices[[j]][x]
+                                          j <<- j + 1
+                                          r
+                                        })
+        found_chunk <- which(found_chunks_str == paste(chunk_indices_on_file,
+                                                       collapse = '_'))[1]
+        if (length(found_chunk) > 0) {
+          num_tries <- 5
+          found <- FALSE
+          try_num <- 1
+          while ((try_num <= num_tries) && !found) {
+            array_of_chunks[[i]] <- try({
+              readRDS(paste0(shared_dir, '/',
+                             chunk_files_original[found_chunk]))
+            })
+            if (('try-error' %in% class(array_of_chunks[[i]]))) {
+              message("Waiting for an incomplete file transfer...")
+              Sys.sleep(5)
+            } else {
+              found <- TRUE
+            } 
+            try_num <- try_num + 1
+          }
+          if (!found) {
+            stop("Could not open one of the chunks. Might be a large chunk ",
+                 "in transfer. Merge aborted, files have been preserved.")
+          }
+        }
+      }
+      
+      result[[component]] <- .MergeArrayOfArrays(array_of_chunks)
+      rm(array_of_chunks)
+      gc()
+    }
+  }
+  
+  if (remove) {
+    sapply(all_chunk_files_original, 
+           function(x) {
+             file.remove(paste0(shared_dir, '/', x))
+           })
+  }
+  
+  result
+}
+
+.KnownLonNames <- function() {
+  known_lon_names <- c('lon', 'longitude', 'x', 'i', 'nav_lon')
+}
+
+.KnownLatNames <- function() {
+  known_lat_names <- c('lat', 'latitude', 'y', 'j', 'nav_lat')
 }
