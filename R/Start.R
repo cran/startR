@@ -611,8 +611,8 @@
 #'  auxiliary data read for only the first file of each source (or data set) in 
 #'  the pattern dimension (see \code{\dots} for info on what the pattern 
 #'  dimension is). However it can be configured to return the metadata for all 
-#'  the files along any set of file dimensions. The parameter 'metadata_dims'
-#'   allows to configure this level of granularity of the returned metadata.
+#'  the files along any set of file dimensions. The default value is NULL, and
+#'  it will be assigned automatically as parameter 'pattern_dims'.
 #'@param selector_checker A function used internaly by Start() to 
 #'  translate a set of selectors (values for a dimension associated to a 
 #'  coordinate variable) into a set of numeric indices. It takes by default 
@@ -644,8 +644,8 @@
 #'When specifying a path pattern for a dataset, it might contain shell glob 
 #'experissions. For each dataset, the first file matching the path pattern is 
 #'found, and the found file is used to work out fixed values for the glob 
-#'expressions that will be used for all the files of the dataset. However in 
-#'some cases the values of the shell glob expressions may not be constant for 
+#'expressions that will be used for all the files of the dataset. However, in 
+#'some cases, the values of the shell glob expressions may not be constant for 
 #'all files in a dataset, and they need to be worked out for each file 
 #'involved.\cr\cr
 #'For example, a path pattern could be as follows: \cr
@@ -667,7 +667,16 @@
 #'  pattern with the original glob expressions in the 1st and 2nd levels (in the
 #'  example, both asterisks would be preserved, thus would allow Start()
 #'  to recognize files such as \cr
-#'  \code{'/path/to/dataset/precipitation_zzz/19901101_yyy_foo.nc'}).
+#'  \code{'/path/to/dataset/precipitation_zzz/19901101_yyy_foo.nc'}).\cr\cr
+#'Note that each glob expression can only represent one possibility (Start() 
+#'chooses the first). Because /code{*} is not the tag, which means it cannot
+#'be a dimension of the output array. Therefore, only one possibility can be
+#'adopted. For example, if \cr
+#'\code{'/path/to/dataset/precipitation_*/19901101_*_foo.nc'}\cr
+#'has two matches:\cr
+#'\code{'/path/to/dataset/precipitation_xxx/19901101_yyy_foo.nc'} and\cr
+#'\code{'/path/to/dataset/precipitation_zzz/19901101_yyy_foo.nc'},\cr
+#'only the first found file will be used.
 #'@param retrieve A logical value indicating whether to retrieve the data
 #'  defined in the Start() call or to explore only its dimension lengths 
 #'  and names, and the values for the file and inner dimensions. The default
@@ -1080,7 +1089,7 @@ Start <- function(..., # dim = indices/selectors,
   
   # Check metadata_dims
   if (!is.null(metadata_dims)) {
-    if (is.na(metadata_dims)) {
+    if (any(is.na(metadata_dims))) {
       metadata_dims <- NULL
     } else if (!is.character(metadata_dims) || (length(metadata_dims) < 1)) {
       stop("Parameter 'metadata' dims must be a vector of at least one character string.")
@@ -1089,6 +1098,21 @@ Start <- function(..., # dim = indices/selectors,
     metadata_dims <- pattern_dims
   }
   
+  # Check if pattern_dims is the first item in metadata_dims
+  if ((pattern_dims %in% metadata_dims) & metadata_dims[1] != pattern_dims) {
+    metadata_dims <- c(metadata_dims[-1], metadata_dims[1])
+  }
+  # Check if metadata_dims has more than 2 elements
+  if ((metadata_dims[1] == pattern_dims & length(metadata_dims) > 2)) {
+  .warning(paste0("Parameter 'metadata_dims' has too many elements which serve repetitive ",
+                  "function. Keep '", metadata_dims[1], "' and '", metadata_dims[2], "' only."))
+  metadata_dims <- metadata_dims[1:2]
+  } else if (!(pattern_dims %in% metadata_dims) & length(metadata_dims) > 1) {
+  .warning(paste0("Parameter 'metadata_dims' has too many elements which serve repetitive ",
+                  "function. Keep '", metadata_dims[1], "' only."))
+  metadata_dims <- metadata_dims[1]
+  }
+
   # Once the pattern dimension with dataset specifications is found,
   # the variable 'dat' is mounted with the information of each
   # dataset.
@@ -1671,6 +1695,8 @@ Start <- function(..., # dim = indices/selectors,
             replace_values[[u_file_dim]] <- '*'
             depended_dim <- NULL
             depended_dim_values <- NA
+
+#NOTE: Here 'selectors' is always 1. Is it supposed to be like this?
             selectors <- dat_selectors[[u_file_dim]][[1]]
             if (u_file_dim %in% names(depending_file_dims)) {
               depended_dim <- depending_file_dims[[u_file_dim]]
@@ -1772,6 +1798,20 @@ Start <- function(..., # dim = indices/selectors,
           sub_array_of_not_found_files[j] <- TRUE
         } else {
           file_path <- .ReplaceVariablesInString(dat[[i]][['path']], replace_values)
+
+#NOTE: After replacing tags, there is still * if path_glob_permissive is not FALSE.
+          if (grepl('\\*', file_path)) {
+            found_files <- Sys.glob(file_path)
+            file_path <- found_files[1]   # choose only the first file.
+#NOTE: Above line chooses only the first found file. Because * is not tags, which means
+#      it is not a dimension. So it cannot store more than one item. If use * to define
+#      the path, that * should only represent one possibility.
+            if (length(found_files) > 1) {
+              .warning("Using glob expression * to define the path, but more ",
+                       "than one match is found. Choose the first match only.")
+            }
+          }
+
           if (!(length(grep("^http", file_path)) > 0)) {
             if (grepl(file_path, '*', fixed = TRUE)) {
               file_path_full <- Sys.glob(file_path)[1]
@@ -1978,7 +2018,7 @@ Start <- function(..., # dim = indices/selectors,
                     picked_common_vars[[var_to_read]] <- new_array
                     pick_ordered <- FALSE 
                     if (var_to_read %in% unlist(var_params)) {
-                      if (associated_dim_name %in% names(dim_reorder_param) && !aiat) {
+                      if (associated_dim_name %in% names(dim_reorder_params) && !aiat) {
                         picked_common_vars_ordered[[var_to_read]] <- new_array
                         pick_ordered <- TRUE
                       }
@@ -3416,7 +3456,13 @@ Start <- function(..., # dim = indices/selectors,
             if (i == length(dat)) {
               for (common_var_to_crop in names(common_vars_to_crop)) {
                 if (inner_dim %in% names(dim(common_vars_to_crop[[common_var_to_crop]]))) {
+
+                  if (type_of_var_to_crop == 'transformed' & !aiat) {
+                  common_vars_to_crop[[common_var_to_crop]] <- Subset(transformed_subset_var, inner_dim, crop_indices)
+                  } else {  #old code
                   common_vars_to_crop[[common_var_to_crop]] <- Subset(common_vars_to_crop[[common_var_to_crop]], inner_dim, crop_indices)
+                  }
+
                 }
               }
             }
@@ -3881,6 +3927,9 @@ Start <- function(..., # dim = indices/selectors,
         .message(progress_message, appendLF = FALSE)
       }
     }
+
+# NOTE: In .LoadDataFile(), metadata is saved in metadata_folder/1 or /2 etc. Before here,
+#       the path name is created in work_pieces but the path hasn't been built yet.
     if (num_procs == 1) {
       found_files <- lapply(work_pieces, .LoadDataFile, 
                             shared_matrix_pointer = shared_matrix_pointer,
@@ -4041,11 +4090,43 @@ Start <- function(..., # dim = indices/selectors,
     # Load metadata and remove the metadata folder
     if (!is.null(metadata_dims)) {
       loaded_metadata_files <- list.files(metadata_folder)
-      loaded_metadata <- lapply(paste0(metadata_folder, '/', loaded_metadata_files), readRDS)
+
+      if (!identical(loaded_metadata_files, character(0))) {  # old code
+        loaded_metadata <- lapply(paste0(metadata_folder, '/', loaded_metadata_files), readRDS)
+      } else {
+        loaded_metadata <- NULL
+      }
+
       unlink(metadata_folder, recursive = TRUE)
-      return_metadata <- vector('list', length = prod(dim(array_of_metadata_flags)[metadata_dims]))
-      return_metadata[as.numeric(loaded_metadata_files)] <- loaded_metadata
-      dim(return_metadata) <- dim(array_of_metadata_flags[metadata_dims])
+
+#NOTE: Here, metadata can be saved in one of two ways: one for $common and the other for $dat
+#      for $common, it is a list of metadata length. For $dat, it is a list of dat length,
+#      and each sublist has the metadata for each dat.
+      dim_of_metadata <- dim(array_of_metadata_flags)[metadata_dims]
+      if (!any(names(dim_of_metadata) == pattern_dims) |
+          (any(names(dim_of_metadata) == pattern_dims) &
+           dim_of_metadata[pattern_dims] == 1)) {  # put under $common; old code
+        return_metadata <- vector('list',
+                                  length = prod(dim(array_of_metadata_flags)[metadata_dims]))
+        return_metadata[as.numeric(loaded_metadata_files)] <- loaded_metadata
+        dim(return_metadata) <- dim(array_of_metadata_flags[metadata_dims])
+
+      } else { # put under $dat. metadata_dims has 'dat' and dat length > 1
+        return_metadata <- vector('list',
+                                  length = dim_of_metadata[pattern_dims])
+        names(return_metadata) <- dat_names
+        for (kk in 1:length(return_metadata)) {
+          return_metadata[[kk]] <- vector('list', length = prod(dim_of_metadata[-1])) # 1 is dat
+        }
+        loaded_metadata_count <- 1
+        for (kk in 1:length(return_metadata)) {
+          for (jj in 1:length(return_metadata[[kk]])) {
+            return_metadata[[kk]][jj] <- loaded_metadata[[loaded_metadata_count]]
+            names(return_metadata[[kk]])[jj] <- names(loaded_metadata[[loaded_metadata_count]])
+            loaded_metadata_count <- loaded_metadata_count + 1
+          }
+        }
+      }
       attr(data_array, 'Variables') <- return_metadata
       # TODO: Try to infer data type from loaded_metadata
       # as.integer(data_array) 
@@ -4109,7 +4190,47 @@ Start <- function(..., # dim = indices/selectors,
     if (!silent) {
       .message("Successfully retrieved data.")
     }
-    var_backup <- attr(data_array, 'Variables')[[1]]
+
+    if (all(sapply(attr(data_array, 'Variables'), is.null))) {
+      var_backup <- NULL
+      .warning(paste0("Metadata cannot be retrieved. The reason may be the ",
+                      "non-existence of the first file. Use parameter 'metadata_dims'",
+                      " to assign to file dimensions along which to return metadata, ",
+                      "or check the existence of the first file."))
+    } else {
+
+#NOTE: The metadata of variables can be saved in one of the two different structures.
+#      (1) metadata_dims != 'dat', or (metadata_dims == 'dat' & length(dat) == 1):
+#          put under $common
+#      (2) (metadata_dims == 'dat' & length(dat) > 1):
+#          put under $dat1, $dat2, .... Put it in picked_vars list
+#TODO: The current (2) uses the inefficient method. Should define the list structure first
+#      then fill the list, rather than expand it in the for loop.
+    if (any(metadata_dims == pattern_dims) & length(dat) > 1) { # (2)
+      var_backup <- attr(data_array, 'Variables')
+      for (kk in 1:length(var_backup)) {
+        sublist_names <- lapply(var_backup, names)[[kk]]
+        for (jj in 1:length(sublist_names)) {
+          picked_vars[[kk]][[sublist_names[jj]]] <- var_backup[[kk]][[jj]]
+        }
+      }
+      var_backup <- NULL
+
+    } else {  #(1)
+      var_backup <- attr(data_array, 'Variables')
+      var_backup_names <- unlist(lapply(var_backup, names))
+      new_list <- vector('list', length = length(var_backup_names))
+      count <- 1
+      for (kk in 1:length(var_backup)) {
+        for (jj in 1:length(var_backup[[kk]])) {
+          new_list[[count]] <- var_backup[[kk]][[jj]]
+          count <- count + 1
+        }
+      }
+      names(new_list) <- var_backup_names
+      var_backup <- new_list
+    }
+}
     attr(data_array, 'Variables') <- NULL
     attributes(data_array) <- c(attributes(data_array), 
                                 list(Variables = c(list(common = c(picked_common_vars, var_backup)), 
@@ -4341,4 +4462,3 @@ Start <- function(..., # dim = indices/selectors,
   }
   is.null(sub_array)
 }
-

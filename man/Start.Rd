@@ -295,8 +295,8 @@ the data reader can optionally return auxiliary data via the attribute
 auxiliary data read for only the first file of each source (or data set) in 
 the pattern dimension (see \code{\dots} for info on what the pattern 
 dimension is). However it can be configured to return the metadata for all 
-the files along any set of file dimensions. The parameter 'metadata_dims'
- allows to configure this level of granularity of the returned metadata.}
+the files along any set of file dimensions. The default value is NULL, and
+it will be assigned automatically as parameter 'pattern_dims'.}
 
 \item{selector_checker}{A function used internaly by Start() to 
 translate a set of selectors (values for a dimension associated to a 
@@ -333,8 +333,8 @@ is FALSE.}
 When specifying a path pattern for a dataset, it might contain shell glob 
 experissions. For each dataset, the first file matching the path pattern is 
 found, and the found file is used to work out fixed values for the glob 
-expressions that will be used for all the files of the dataset. However in 
-some cases the values of the shell glob expressions may not be constant for 
+expressions that will be used for all the files of the dataset. However, in 
+some cases, the values of the shell glob expressions may not be constant for 
 all files in a dataset, and they need to be worked out for each file 
 involved.\cr\cr
 For example, a path pattern could be as follows: \cr
@@ -356,7 +356,16 @@ For example, a path pattern could be as follows: \cr
  pattern with the original glob expressions in the 1st and 2nd levels (in the
  example, both asterisks would be preserved, thus would allow Start()
  to recognize files such as \cr
- \code{'/path/to/dataset/precipitation_zzz/19901101_yyy_foo.nc'}).}
+ \code{'/path/to/dataset/precipitation_zzz/19901101_yyy_foo.nc'}).\cr\cr
+Note that each glob expression can only represent one possibility (Start() 
+chooses the first). Because /code{*} is not the tag, which means it cannot
+be a dimension of the output array. Therefore, only one possibility can be
+adopted. For example, if \cr
+\code{'/path/to/dataset/precipitation_*/19901101_*_foo.nc'}\cr
+has two matches:\cr
+\code{'/path/to/dataset/precipitation_xxx/19901101_yyy_foo.nc'} and\cr
+\code{'/path/to/dataset/precipitation_zzz/19901101_yyy_foo.nc'},\cr
+only the first found file will be used.}
 
 \item{retrieve}{A logical value indicating whether to retrieve the data
 defined in the Start() call or to explore only its dimension lengths 

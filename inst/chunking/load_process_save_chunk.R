@@ -52,7 +52,7 @@ for (input in 1:length(data)) {
       split_dims_to_alter <- which(names(split_dims[[k]]) %in% names_dims_to_alter)
       chunks_split_dims[split_dims_to_alter] <- unlist(chunks[names(split_dims[[k]])[split_dims_to_alter]])
       chunks_indices_split_dims[split_dims_to_alter] <- chunk_indices[names(split_dims[[k]])[split_dims_to_alter]]
-      start_call[[names(split_dims)[k]]] <- chunk(chunks_indices_split_dims, chunks_split_dims,
+      start_call[[names(split_dims)[k]]] <- startR:::.chunk(chunks_indices_split_dims, chunks_split_dims,
                                                   eval(start_call[[names(split_dims)[k]]]))
       dims_to_alter_to_remove <- which(names_dims_to_alter %in% names(split_dims[[k]]))
       if (length(dims_to_alter_to_remove) > 0) {
@@ -63,7 +63,7 @@ for (input in 1:length(data)) {
   }
   if (length(dims_to_alter) > 0) {
     for (call_dim in names_dims_to_alter) {
-      start_call[[call_dim]] <- chunk(chunk_indices[call_dim], chunks[[call_dim]], 
+      start_call[[call_dim]] <- startR:::.chunk(chunk_indices[call_dim], chunks[[call_dim]], 
                                       eval(start_call[[call_dim]]))
     }
   }

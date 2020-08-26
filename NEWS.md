@@ -1,3 +1,17 @@
+# startR v2.0.1 (Release date: 2020-08-25)
+- Bugfix for the function .chunk(). Its name was chunk() before v2.0.0, and there are two parts 
+were not renamed to .chunk() in v2.0.0.
+- Bugfix for metadata in the condition that reorder or transform is applied and 'return_vars' is NULL.
+- Bugfix for the parameter 'metadata_dims'. It did not work correctly for the cases other than 
+'1 data set, 1 variable'. For 1 data set case, all the variables should be listed under $common in
+the attributes; for more than 1 data set case, the variables should be listed under each $dat.
+- Bugfix for the missing first file case. It showed an error before when the first file is not found but now it works.
+- Bugfix for the parameter 'path_glob_permissive' of Start().
+
+# startR v2.0.0 (Release date: 2020-08-06)
+- Adopt Roxygen2 documentation format  
+- Remove Subset() to avoid duplicated function. Use ClimProjDiags::Subset instead.
+
 # startR v1.0.3 (Release date: 2020-06-19)
 - Bugfix for requiring the repetitive values from a single file when using 
 'merge_across_dims' and 'split_multiselected_dims'. The value positions were not 
