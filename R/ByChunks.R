@@ -551,6 +551,8 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
               ecflow_suite_dir_suite)
     file.copy(system.file('chunking/tail.h', package = 'startR'),
               ecflow_suite_dir_suite)
+    #file.copy(system.file('chunking/clean_devshm.sh', package = 'startR'),
+    #          ecflow_suite_dir_suite)
   }
   
   add_line <- function(suite, line, tabs) {

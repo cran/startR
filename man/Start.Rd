@@ -12,7 +12,8 @@ Start(..., return_vars = NULL, synonims = NULL, file_opener = NcOpener,
   pattern_dims = NULL, metadata_dims = NULL,
   selector_checker = SelectorChecker, merge_across_dims = FALSE,
   merge_across_dims_narm = FALSE, split_multiselected_dims = FALSE,
-  path_glob_permissive = FALSE, retrieve = FALSE, num_procs = 1,
+  path_glob_permissive = FALSE, largest_dims_length = FALSE,
+  retrieve = FALSE, num_procs = 1, ObjectBigmemory = NULL,
   silent = FALSE, debug = FALSE)
 }
 \arguments{
@@ -367,6 +368,22 @@ has two matches:\cr
 \code{'/path/to/dataset/precipitation_zzz/19901101_yyy_foo.nc'},\cr
 only the first found file will be used.}
 
+\item{largest_dims_length}{A logical value or a named integer vector
+ indicating if Start() should examine all the files to get the largest 
+ length of the inner dimensions (TRUE) or use the first valid file of each 
+ dataset as the returned dimension length (FALSE). Since examining all the 
+ files could be time-consuming, a vector can be used to explicitly specify
+ the expected length of the inner dimensions. For those inner dimensions not
+ specified, the first valid file will be used. The default value is FALSE.\cr\cr
+ This parameter is useful when the required files don't have consistent 
+ inner dimension. For example, there are 10 required experimental data files
+ of a series of start dates. The data only contain 25 members for the first
+ 2 years while 51 members for the later years. If \code{'largest_dims_length = FALSE'},
+ the returned member dimension length will be 25 only. The 26th to 51st 
+ members in the later 8 years will be discarded. If \code{'largest_dims_length = TRUE'},
+ the returned member dimension length will be 51. To save the resource,
+\code{'largest_dims_length = c(member = 51)'} can also be used.}
+
 \item{retrieve}{A logical value indicating whether to retrieve the data
 defined in the Start() call or to explore only its dimension lengths 
 and names, and the values for the file and inner dimensions. The default
@@ -377,6 +394,10 @@ parallel execution of the retrieval/transformation/arrangement of the
 multiple involved files in a call to Start(). If set to NULL,
 takes the number of available cores (as detected by detectCores() in 
 the package 'future'). The default value is 1 (no parallel execution).}
+
+\item{ObjectBigmemory}{a character string to be included as part of the 
+bigmemory object name. This parameter is thought to be used internally by the
+chunking capabilities of startR.}
 
 \item{silent}{A logical value of whether to display progress messages (FALSE)
 or not (TRUE). The default value is FALSE.}

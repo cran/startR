@@ -1,3 +1,13 @@
+# startR v2.1.0 (Release date: 2020-10-30)
+- Bugfix for metadata retrieving when there are more than one dataset and one of them is missing.
+- Bugfix for the Start() parameter 'metadata_dims' is set to non-dat dimension.
+- Bugfix for wildcard reading when the Start() parameter 'path_glob_permissive' is used.
+- /dev/shm automatic cleaning on Compute(). Solve the error 'No space left on device' which happened when the jobs are aborted.
+- Add new paramter 'largest_dims_length' in Start(). It can examine all the files to find the largest inner dimension length. It is useful when certain inner dimension among the files does not have consistent length (e.g., different ensemble number).
+
+# startR v2.0.1 (Release date: 2020-09-10)
+- /dev/shm automatic cleaning on Compute()
+
 # startR v2.0.1 (Release date: 2020-08-25)
 - Bugfix for the function .chunk(). Its name was chunk() before v2.0.0, and there are two parts 
 were not renamed to .chunk() in v2.0.0.

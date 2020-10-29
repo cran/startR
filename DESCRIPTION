@@ -1,6 +1,6 @@
 Package: startR
 Title: Automatically Retrieve Multidimensional Distributed Data Sets
-Version: 2.0.1
+Version: 2.1.0
 Authors@R: c(
     person("BSC-CNS", role = c("aut", "cph")),
     person("Nicolau", "Manubens", , "nicolau.manubens@bsc.es", role = c("aut")),
@@ -9,15 +9,15 @@ Authors@R: c(
     person("Javier", "Vegas", , "javier.vegas@bsc.es", role = c("ctb")),
     person("Pierre-Antoine", "Bretonniere", , "pierre-antoine.bretonniere@bsc.es", role = c("ctb")),
     person("Roberto", "Serrano", , "rsnotivoli@gmal.com", role = c("ctb")))
-Description: Tool to automatically fetch, transform and arrange subsets of multi-
-    dimensional data sets (collections of files) stored in local and/or remote
-    file systems or servers, using multicore capabilities where possible. The tool
-    provides an interface to perceive a collection of data sets as a single large
-    multidimensional data array, and enables the user to request for automatic
+Description: Tool to automatically fetch, transform and arrange subsets of
+    multi- dimensional data sets (collections of files) stored in local and/or
+    remote file systems or servers, using multicore capabilities where possible.
+    The tool provides an interface to perceive a collection of data sets as a single
+    large multidimensional data array, and enables the user to request for automatic
     retrieval, processing and arrangement of subsets of the large array. Wrapper
     functions to add support for custom file formats can be plugged in/out, making
-    the tool suitable for any research field where large multidimensional data
-    sets are involved.
+    the tool suitable for any research field where large multidimensional data sets
+    are involved.
 Depends: R (>= 3.2.0)
 Imports: abind, bigmemory, future, multiApply (>= 2.1.1), parallel,
         easyNCDF, s2dverification, ClimProjDiags
@@ -26,10 +26,10 @@ License: LGPL-3
 URL: https://earth.bsc.es/gitlab/es/startR/
 BugReports: https://earth.bsc.es/gitlab/es/startR/-/issues
 LazyData: true
-SystemRequirements: cdo
+SystemRequirements: cdo ecFlow
 RoxygenNote: 5.0.0
 NeedsCompilation: no
-Packaged: 2020-08-25 08:51:31 UTC; aho
+Packaged: 2020-10-29 15:22:51 UTC; aho
 Author: BSC-CNS [aut, cph],
   Nicolau Manubens [aut],
   An-Chi Ho [ctb, cre],
@@ -39,4 +39,4 @@ Author: BSC-CNS [aut, cph],
   Roberto Serrano [ctb]
 Maintainer: An-Chi Ho <an.ho@bsc.es>
 Repository: CRAN
-Date/Publication: 2020-08-26 07:10:02 UTC
+Date/Publication: 2020-10-29 17:40:02 UTC

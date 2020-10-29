@@ -677,6 +677,21 @@
 #'\code{'/path/to/dataset/precipitation_xxx/19901101_yyy_foo.nc'} and\cr
 #'\code{'/path/to/dataset/precipitation_zzz/19901101_yyy_foo.nc'},\cr
 #'only the first found file will be used.
+#'@param largest_dims_length A logical value or a named integer vector
+#'  indicating if Start() should examine all the files to get the largest 
+#'  length of the inner dimensions (TRUE) or use the first valid file of each 
+#'  dataset as the returned dimension length (FALSE). Since examining all the 
+#'  files could be time-consuming, a vector can be used to explicitly specify
+#'  the expected length of the inner dimensions. For those inner dimensions not
+#'  specified, the first valid file will be used. The default value is FALSE.\cr\cr
+#'  This parameter is useful when the required files don't have consistent 
+#'  inner dimension. For example, there are 10 required experimental data files
+#'  of a series of start dates. The data only contain 25 members for the first
+#'  2 years while 51 members for the later years. If \code{'largest_dims_length = FALSE'},
+#'  the returned member dimension length will be 25 only. The 26th to 51st 
+#'  members in the later 8 years will be discarded. If \code{'largest_dims_length = TRUE'},
+#'  the returned member dimension length will be 51. To save the resource,
+#' \code{'largest_dims_length = c(member = 51)'} can also be used.
 #'@param retrieve A logical value indicating whether to retrieve the data
 #'  defined in the Start() call or to explore only its dimension lengths 
 #'  and names, and the values for the file and inner dimensions. The default
@@ -686,6 +701,9 @@
 #'  multiple involved files in a call to Start(). If set to NULL,
 #'  takes the number of available cores (as detected by detectCores() in 
 #'  the package 'future'). The default value is 1 (no parallel execution).
+#'@param ObjectBigmemory a character string to be included as part of the 
+#'  bigmemory object name. This parameter is thought to be used internally by the
+#'  chunking capabilities of startR.
 #'@param silent A logical value of whether to display progress messages (FALSE)
 #'   or not (TRUE). The default value is FALSE.
 #'@param debug A logical value of whether to return detailed messages on the
@@ -805,8 +823,10 @@ Start <- function(..., # dim = indices/selectors,
                   merge_across_dims_narm = FALSE,
                   split_multiselected_dims = FALSE,
                   path_glob_permissive = FALSE,
+                  largest_dims_length = FALSE,
                   retrieve = FALSE, 
                   num_procs = 1, 
+                  ObjectBigmemory = NULL,
                   silent = FALSE, debug = FALSE) {
   #, config_file = NULL
   #dictionary_dim_names = ,
@@ -1360,6 +1380,19 @@ Start <- function(..., # dim = indices/selectors,
     stop("Parameter 'path_glob_permissive' must be of length 1.")
   }
   
+  # Check largest_dims_length
+  if (!is.numeric(largest_dims_length) && !is.logical(largest_dims_length)) {
+    stop("Parameter 'largest_dims_length' must be TRUE, FALSE or a named integer vector.")
+  }
+  if (is.numeric(largest_dims_length)) {
+    if (any(largest_dims_length %% 1 != 0) | any(largest_dims_length < 0) | is.null(names(largest_dims_length))) {
+      stop("Parameter 'largest_dims_length' must be TRUE, FALSE or a named integer vector.")
+    }
+  }
+  if (is.logical(largest_dims_length) && length(largest_dims_length) != 1) {
+    stop("Parameter 'path_glob_permissive' must be TRUE, FALSE or a named integer vector.")
+  }
+
   # Check retrieve
   if (!is.logical(retrieve)) {
     stop("Parameter 'retrieve' must be TRUE or FALSE.")
@@ -1768,11 +1801,23 @@ Start <- function(..., # dim = indices/selectors,
                                           dim = files_to_load)
     names(dim(sub_array_of_not_found_files)) <- known_dims
     j <- 1
-    selector_indices_save <- vector('list', prod(files_to_load))
+    if (!exists('selector_indices_save')) {
+      selector_indices_save <- vector('list', length = length(dat))
+    }
+    if (!exists('selectors_total_list')) {
+      selectors_total_list <- vector('list', length = length(dat))
+    }
+    selector_indices_save[[i]] <- vector('list', length = prod(files_to_load))
+    selectors_total_list[[i]] <- vector('list', length = prod(files_to_load))
+
     while (j <= prod(files_to_load)) {
       selector_indices <- which(sub_array_of_files_to_load == j, arr.ind = TRUE)[1, ]
       names(selector_indices) <- known_dims
-      selector_indices_save[[j]] <- selector_indices
+
+      tmp <- selector_indices
+      tmp[which(known_dims == found_pattern_dim)] <- i
+      selector_indices_save[[i]][[j]] <- tmp
+
       selectors <- sapply(1:length(known_dims), 
                           function (x) {
                             vector_to_pick <- 1
@@ -1782,6 +1827,9 @@ Start <- function(..., # dim = indices/selectors,
                             dat_selectors[known_dims][[x]][[vector_to_pick]][selector_indices[x]]
                           })
       names(selectors) <- known_dims
+      selectors_total_list[[i]][[j]] <- selectors
+      names(selectors_total_list[[i]][[j]]) <- known_dims
+
       replace_values[known_dims] <- selectors
       if (!dataset_has_files[i]) {
         if (any(is.na(selectors))) {
@@ -2210,29 +2258,85 @@ Start <- function(..., # dim = indices/selectors,
     if (dataset_has_files[i]) {
       indices <- indices_of_first_files_with_data[[i]]
       if (!is.null(indices)) {
-        file_path <- do.call("[", c(list(array_of_files_to_load), as.list(indices_of_first_files_with_data[[i]])))
-        # The following 5 lines should go several lines below, but were moved
-        # here for better performance.
-        # If any of the dimensions comes without defining variable, then we read
-        # the data dimensions.
-        data_dims <- NULL
-        if (length(unlist(var_params[expected_inner_dims[[i]]])) < length(expected_inner_dims[[i]])) {
-          file_to_open <- file_path
-          data_dims <- file_dim_reader(file_to_open, NULL, selectors_of_first_files_with_data[[i]],
-                                       lapply(dat[[i]][['selectors']][expected_inner_dims[[i]]], '[[', 1),
-                                       synonims)
+        if (largest_dims_length == FALSE | is.numeric(largest_dims_length)) {  #old code. use the 1st valid file to determine the dims
+          file_path <- do.call("[", c(list(array_of_files_to_load), as.list(indices_of_first_files_with_data[[i]])))
+          # The following 5 lines should go several lines below, but were moved
+          # here for better performance.
+          # If any of the dimensions comes without defining variable, then we read
+          # the data dimensions.
+          data_dims <- NULL
+          if (length(unlist(var_params[expected_inner_dims[[i]]])) < length(expected_inner_dims[[i]])) {
+            file_to_open <- file_path
+            data_dims <- file_dim_reader(file_to_open, NULL, selectors_of_first_files_with_data[[i]],
+                                         lapply(dat[[i]][['selectors']][expected_inner_dims[[i]]], '[[', 1),
+                                         synonims)
+            # file_dim_reader returns dimension names as found in the file.
+            # Need to translate accoridng to synonims:
+            names(data_dims) <- sapply(names(data_dims),
+                                       function(x) {
+                                         which_entry <- which(sapply(synonims, function(y) x %in% y))
+                                         if (length(which_entry) > 0) {
+                                           names(synonims)[which_entry]
+                                         } else {
+                                           x
+                                         }
+                                       })
+          }
+
+          if (is.numeric(largest_dims_length)) { # largest_dims_length is a named vector
+            # Check if the names fit the inner dimension names
+            if (!all(names(largest_dims_length) %in% names(data_dims))) {
+              #NOTE: stop or warning?
+              stop("Parameter 'largest_dims_length' has inconsistent names with inner dimensions.")
+            } else {
+              match_ind <- match(names(largest_dims_length), names(data_dims))
+              data_dims[match_ind] <- largest_dims_length
+            }
+          }
+
+        } else { # largest_dims_length == TRUE
+          # Open and get all the dim from all the files
+          data_dims_all_files <- vector('list', length = length(selectors_total_list[[i]]))
+
+          for (selectors_kk in 1:length(data_dims_all_files)) {
+            file_path <- do.call("[", c(list(array_of_files_to_load), as.list(selector_indices_save[[i]][[selectors_kk]])))
+            file_to_open <- file_path
+
+            data_dims_all_files[[selectors_kk]] <- try(file_dim_reader(file_to_open, NULL, selectors_total_list[[i]][[selectors_kk]],
+                                           lapply(dat[[i]][['selectors']][expected_inner_dims[[i]]], '[[', 1),
+                                           synonims), silent = TRUE)
+
+          }
+
+          # Remove the missing files (i.e., fail try above)
+          if (!identical(which(substr(data_dims_all_files, 1, 5) == 'Error'), integer(0))) {
+            tmp <- which(substr(data_dims_all_files, 1, 5) == 'Error')
+            data_dims_all_files <- data_dims_all_files[-tmp]
+          }
+
+          # Find the longest dimensions from all the files
+          largest_data_dims <- rep(0, length(data_dims_all_files[[1]]))
+          for (kk in 1:length(data_dims_all_files[[1]])) {
+            largest_data_dims[kk] <- max(sapply(data_dims_all_files, '[', kk))
+          }
+          names(largest_data_dims) <- names(data_dims_all_files[[1]])
+
           # file_dim_reader returns dimension names as found in the file.
           # Need to translate accoridng to synonims:
-          names(data_dims) <- sapply(names(data_dims),
-                                     function(x) {
-                                       which_entry <- which(sapply(synonims, function(y) x %in% y))
-                                       if (length(which_entry) > 0) {
-                                         names(synonims)[which_entry]
-                                       } else {
-                                         x
-                                       }
-                                     })
-        }
+          names(largest_data_dims) <- sapply(names(largest_data_dims),
+                                       function(x) {
+                                         which_entry <- which(sapply(synonims, function(y) x %in% y))
+                                         if (length(which_entry) > 0) {
+                                           names(synonims)[which_entry]
+                                         } else {
+                                           x
+                                         }
+                                       })
+
+          # replace data_dims with largest_data_dims
+          data_dims <- largest_data_dims
+        } # end of if (largest_dims_length == TRUE)
+
         # Transform the variables if needed and keep them apart.
         if (!is.null(transform) && (length(transform_vars) > 0)) {
           if (!all(transform_vars %in% c(names(picked_vars[[i]]), names(picked_common_vars)))) {
@@ -2250,7 +2354,7 @@ Start <- function(..., # dim = indices/selectors,
             if (length(which_are_ordered) > 0) {
               tmp <- which(!is.na(match(names(picked_vars_ordered[[i]]), names(which_are_ordered))))
               new_vars_to_transform[which_are_ordered] <- picked_vars_ordered[[i]][tmp]
-              
+            
             }
             vars_to_transform <- c(vars_to_transform, new_vars_to_transform)
           }
@@ -3715,8 +3819,24 @@ Start <- function(..., # dim = indices/selectors,
     # TODO: try performance of storing all in cols instead of rows
     # Create the shared memory array, and a pointer to it, to be sent
     # to the work pieces.
-    data_array <- bigmemory::big.matrix(nrow = prod(final_dims), ncol = 1)
+    if (is.null(ObjectBigmemory)) {
+        data_array <- bigmemory::big.matrix(nrow = prod(final_dims), ncol = 1)
+    } else {
+        data_array <- bigmemory::big.matrix(nrow = prod(final_dims), ncol = 1,
+                                            backingfile = ObjectBigmemory)
+    }
     shared_matrix_pointer <- bigmemory::describe(data_array)
+    if (is.null(ObjectBigmemory)) {
+        name_bigmemory_obj <- attr(shared_matrix_pointer, 'description')$sharedName
+    } else {
+        name_bigmemory_obj <- attr(shared_matrix_pointer, 'description')$filename
+    }
+
+    #warning(paste("SharedName:", attr(shared_matrix_pointer, 'description')$sharedName))
+    #warning(paste("Filename:", attr(shared_matrix_pointer, 'description')$filename))
+    #if (!is.null(ObjectBigmemory)) {
+    #  attr(shared_matrix_pointer, 'description')$sharedName <- ObjectBigmemory
+    #}
     if (is.null(num_procs)) {
       num_procs <- future::availableCores()
     }
@@ -4121,9 +4241,19 @@ Start <- function(..., # dim = indices/selectors,
         loaded_metadata_count <- 1
         for (kk in 1:length(return_metadata)) {
           for (jj in 1:length(return_metadata[[kk]])) {
-            return_metadata[[kk]][jj] <- loaded_metadata[[loaded_metadata_count]]
-            names(return_metadata[[kk]])[jj] <- names(loaded_metadata[[loaded_metadata_count]])
-            loaded_metadata_count <- loaded_metadata_count + 1
+
+            if (dataset_has_files[kk]) {
+              if (loaded_metadata_count %in% loaded_metadata_files) {
+                return_metadata[[kk]][jj] <- loaded_metadata[[loaded_metadata_count]]
+                names(return_metadata[[kk]])[jj] <- names(loaded_metadata[[loaded_metadata_count]])
+              } else {
+                return_metadata[[kk]][jj] <- NULL
+              }
+              loaded_metadata_count <- loaded_metadata_count + 1
+            } else {
+              return_metadata[[kk]][jj] <- NULL
+            }
+
           }
         }
       }
@@ -4210,27 +4340,37 @@ Start <- function(..., # dim = indices/selectors,
       var_backup <- attr(data_array, 'Variables')
       for (kk in 1:length(var_backup)) {
         sublist_names <- lapply(var_backup, names)[[kk]]
-        for (jj in 1:length(sublist_names)) {
-          picked_vars[[kk]][[sublist_names[jj]]] <- var_backup[[kk]][[jj]]
+        if (!is.null(sublist_names)) {
+          for (jj in 1:length(sublist_names)) {
+            picked_vars[[kk]][[sublist_names[jj]]] <- var_backup[[kk]][[jj]]
+          }
         }
       }
       var_backup <- NULL
 
     } else {  #(1)
       var_backup <- attr(data_array, 'Variables')
-      var_backup_names <- unlist(lapply(var_backup, names))
-      new_list <- vector('list', length = length(var_backup_names))
+      len <- unlist(lapply(var_backup, length))
+      len <- sum(len) + length(which(len == 0))  #0 means NULL
+      name_list <- lapply(var_backup, names)
+      new_list <- vector('list', length = len)
       count <- 1
+
       for (kk in 1:length(var_backup)) {
-        for (jj in 1:length(var_backup[[kk]])) {
-          new_list[[count]] <- var_backup[[kk]][[jj]]
+        if (length(var_backup[[kk]]) == 0) {  #NULL
           count <- count + 1
+        } else {
+          for (jj in 1:length(var_backup[[kk]])) {
+            new_list[[count]] <- var_backup[[kk]][[jj]]
+            names(new_list)[count] <- name_list[[kk]][jj]
+            count <- count + 1
+          }
         }
       }
-      names(new_list) <- var_backup_names
       var_backup <- new_list
     }
 }
+
     attr(data_array, 'Variables') <- NULL
     attributes(data_array) <- c(attributes(data_array), 
                                 list(Variables = c(list(common = c(picked_common_vars, var_backup)), 
@@ -4238,7 +4378,8 @@ Start <- function(..., # dim = indices/selectors,
                                      Files = array_of_files_to_load, 
                                      NotFoundFiles = array_of_not_found_files,
                                      FileSelectors = file_selectors,
-                                     PatternDim = found_pattern_dim)
+                                     PatternDim = found_pattern_dim,
+                                     ObjectBigmemory = name_bigmemory_obj) #attr(shared_matrix_pointer, 'description')$sharedName)
     )
     attr(data_array, 'class') <- c('startR_array', attr(data_array, 'class'))
     data_array
@@ -4281,6 +4422,7 @@ Start <- function(..., # dim = indices/selectors,
                           file_data_reader, synonims,
                           transform, transform_params,
                           silent = FALSE, debug = FALSE) {
+  #warning(attr(shared_matrix_pointer, 'description')$sharedName)
   #  suppressPackageStartupMessages({library(bigmemory)})
   ### TODO: Specify dependencies as parameter
   #  suppressPackageStartupMessages({library(ncdf4)})

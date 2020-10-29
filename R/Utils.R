@@ -203,8 +203,12 @@
         if (!is.null(left)) {
           left_match <- regexpr(paste0(left, replace_values[[tag]], right_known), actual_path)
           match_len <- attr(left_match, 'match.length')
-          left_match_limits <- c(left_match + match_len - 1 - nchar(clean(right_known)) - nchar(replace_values[[tag]]) + 1, 
-                                 left_match + match_len - 1 - nchar(clean(right_known)))
+
+          right_known_nchar <- nchar(clean(right_known))
+          if (identical(right_known_nchar, integer(0))) right_known_nchar <- 0
+          left_match_limits <- c(left_match + match_len - 1 - right_known_nchar - nchar(replace_values[[tag]]) + 1,
+                                 left_match + match_len - 1 - right_known_nchar)
+
           if (!(left_match < 1)) {
             match_limits <- left_match_limits
           }
@@ -213,8 +217,11 @@
         if (!is.null(right)) {
           right_match <- regexpr(paste0(left_known, replace_values[[tag]], right), actual_path)
           match_len <- attr(right_match, 'match.length')
-          right_match_limits <- c(right_match + nchar(clean(left_known)),  
-                                  right_match + nchar(clean(left_known)) + nchar(replace_values[[tag]]) - 1)
+
+          left_known_nchar <- nchar(clean(left_known))
+          if (identical(left_known_nchar, integer(0))) left_known_nchar <- 0
+          right_match_limits <- c(right_match + left_known_nchar,
+                                  right_match + left_known_nchar + nchar(replace_values[[tag]]) - 1)
           if (is.null(match_limits) && !(right_match < 1)) {
             match_limits <- right_match_limits
           }

@@ -70,7 +70,34 @@ for (input in 1:length(data)) {
   if (!('num_procs' %in% names(start_call))) {
     start_call[['num_procs']] <- threads_load
   }
-  data[[input]] <- eval(start_call)
+  # Creates a name for the temporal file using the chunks numbers:
+  nameMemoryObject <- gsub("[^0-9.-]", "_", gsub(out_dir, "", task_path))
+  nameMemoryObject <- substr(nameMemoryObject, 2, nchar(nameMemoryObject))
+  removeRS <- function(str) paste(rle(strsplit(str, "")[[1]])$values, collapse = "")
+  nameMemoryObject <- removeRS(nameMemoryObject)
+  start_call[['ObjectBigmemory']] <- nameMemoryObject
+  data[[input]] <- tryCatch(eval(start_call),
+                     # Handler when an error occurs:
+                     error = function(e) {
+                       message(paste("The data cannot be loaded."))
+                       message("See the original error message:")
+                       message(e)
+                       message("\n Current files in /dev/shm:") 
+                       noreturn <- lapply(list.files("/dev/shm"), function (x) {
+                              info <- file.info(paste0("/dev/shm/", x))
+                              message(paste("file:", rownames(info),
+                                            "size:",  info$size, 
+                                            "uname:", info$uname))})
+                       message(getwd())
+                       file.remove(nameMemoryObject)
+                       file.remove(paste0(nameMemoryObject, ".desc"))
+                       message(paste("Files", nameMemoryObject, "has been removed."))
+                       stop("The job has failed while loading data. See original error reported above.")
+                     })
+  warning(attributes(data[[input]])$ObjectBigmemory)
+  #write.table(attributes(data[[input]])$ObjectBigmemory,
+  #            file = paste0(task_path, '.filename.txt'),
+  #            col.names = FALSE, row.names = FALSE, quote = FALSE)
 }
 t_end_load <- Sys.time()
 t_load <- as.numeric(difftime(t_end_load, t_begin_load, units = 'secs'))
