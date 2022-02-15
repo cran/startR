@@ -354,7 +354,17 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
   # Check all input headers have matching dimensions
   cube_index <- 1
   for (cube_header in cube_headers) {
-    if (!all(attr(cube_header, 'Dimensions') == all_dims_merged[names(attr(cube_header, 'Dimensions'))])) {
+
+    # Check if all the margin dims are consistent among datasets
+    if (!all(chunked_dims %in% names(attr(cube_header, "Dimensions")))) {
+      trouble_dim_name <- chunked_dims[which(!chunked_dims %in%              
+                                             names(attr(cube_header, "Dimensions")))]
+      stop(paste0("Found margin dimension, ", toString(trouble_dim_name),
+           ", is not in input data ", cube_index, "."))
+    }
+
+    # Only check margin dimensions (i.e., chunked_dims)
+    if (!all(attr(cube_header, 'Dimensions')[chunked_dims] == all_dims_merged[names(attr(cube_header, 'Dimensions'))][chunked_dims])) {
       stop("All provided 'cube_headers' must have matching dimension lengths ",
            "with each other.")
     }

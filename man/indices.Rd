@@ -39,4 +39,3 @@ original data. See details in the documentation of the parameter \code{\dots}
 \seealso{
 \code{\link{values}}
 }
-

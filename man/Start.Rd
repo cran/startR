@@ -4,19 +4,310 @@
 \alias{Start}
 \title{Declare, discover, subset and retrieve multidimensional distributed data sets}
 \usage{
-Start(..., return_vars = NULL, synonims = NULL, file_opener = NcOpener,
-  file_var_reader = NcVarReader, file_dim_reader = NcDimReader,
-  file_data_reader = NcDataReader, file_closer = NcCloser,
-  transform = NULL, transform_params = NULL, transform_vars = NULL,
-  transform_extra_cells = 2, apply_indices_after_transform = FALSE,
-  pattern_dims = NULL, metadata_dims = NULL,
-  selector_checker = SelectorChecker, merge_across_dims = FALSE,
-  merge_across_dims_narm = FALSE, split_multiselected_dims = FALSE,
-  path_glob_permissive = FALSE, largest_dims_length = FALSE,
-  retrieve = FALSE, num_procs = 1, ObjectBigmemory = NULL,
-  silent = FALSE, debug = FALSE)
+Start(
+  ...,
+  return_vars = NULL,
+  synonims = NULL,
+  file_opener = NcOpener,
+  file_var_reader = NcVarReader,
+  file_dim_reader = NcDimReader,
+  file_data_reader = NcDataReader,
+  file_closer = NcCloser,
+  transform = NULL,
+  transform_params = NULL,
+  transform_vars = NULL,
+  transform_extra_cells = 2,
+  apply_indices_after_transform = FALSE,
+  pattern_dims = NULL,
+  metadata_dims = NULL,
+  selector_checker = SelectorChecker,
+  merge_across_dims = FALSE,
+  merge_across_dims_narm = TRUE,
+  split_multiselected_dims = FALSE,
+  path_glob_permissive = FALSE,
+  largest_dims_length = FALSE,
+  retrieve = FALSE,
+  num_procs = 1,
+  ObjectBigmemory = NULL,
+  silent = FALSE,
+  debug = FALSE
+)
 }
 \arguments{
+\item{\dots}{A selection of custemized parameters depending on the data 
+format. When we retrieve data from one or a collection of data sets, 
+the involved data can be perceived as belonging to a large multi-dimensional 
+array. For instance, let us consider an example case. We want to retrieve data
+from a source, which contains data for the number of monthly sales of various 
+items, and also for their retail price each month. The data on source is 
+stored as follows:\cr\cr
+\command{
+\cr #  /data/
+\cr #    |-> sales/
+\cr #    |    |-> electronics
+\cr #    |    |    |-> item_a.data
+\cr #    |    |    |-> item_b.data
+\cr #    |    |    |-> item_c.data
+\cr #    |    |-> clothing
+\cr #    |         |-> item_d.data
+\cr #    |         |-> idem_e.data
+\cr #    |         |-> idem_f.data
+\cr #    |-> prices/
+\cr #         |-> electronics
+\cr #         |    |-> item_a.data
+\cr #         |    |-> item_b.data
+\cr #         |    |-> item_c.data
+\cr #         |-> clothing
+\cr #              |-> item_d.data
+\cr #              |-> item_e.data
+\cr #              |-> item_f.data
+}\cr\cr
+Each item file contains data, stored in whichever format, for the sales or 
+prices over a time period, e.g. for the past 24 months, registered at 100 
+different stores over the world. Whichever the format it is stored in, each 
+file can be perceived as a container of a data array of 2 dimensions, time and
+store. Let us assume the '.data' format allows to keep a name for each of 
+these dimensions, and the actual names are 'time' and 'store'.\cr\cr
+The different item files for sales or prices can be perceived as belonging to 
+an 'item' dimension of length 3, and the two groups of three items to a 
+'section' dimension of length 2, and the two groups of two sections (one with
+the sales and the other with the prices) can be perceived as belonging also to
+another dimension 'variable' of length 2. Even the source can be perceived as 
+belonging to a dimension 'source' of length 1.\cr\cr
+All in all, in this example, the whole data could be perceived as belonging to
+a multidimensional 'large array' of dimensions\cr
+\command{
+\cr #  source variable  section      item    store    month
+\cr #       1        2        2         3      100       24
+}
+\cr\cr
+The dimensions of this 'large array' can be classified in two types. The ones 
+that group actual files (the file dimensions) and the ones that group data 
+values inside the files (the inner dimensions). In the example, the file 
+dimensions are 'source', 'variable', 'section' and 'item', whereas the inner 
+dimensions are 'store' and 'month'.
+\cr\cr
+Having the dimensions of our target sources in mind, the parameter \code{\dots} 
+expects to receive information on:
+   \itemize{
+     \item{
+The names of the expected dimensions of the 'large dataset' we want to 
+retrieve data from
+     }
+     \item{
+The indices to take from each dimension (and other constraints)
+     }
+     \item{
+How to reorder the dimension if needed
+     }
+     \item{
+The location and organization of the files of the data sets
+     }
+   }
+For each dimension, the 3 first information items can be specified with a set
+of parameters to be provided through \code{\dots}. For a given dimension 
+'dimname', six parameters can be specified:\cr
+\command{
+\cr # dimname = <indices_to_take>,  # 'all' / 'first' / 'last' /
+\cr #                               # indices(c(1, 10, 20)) /
+\cr #                               # indices(c(1:20)) /
+\cr #                               # indices(list(1, 20)) /
+\cr #                               # c(1, 10, 20) / c(1:20) /
+\cr #                               # list(1, 20)
+\cr # dimname_var = <name_of_associated_coordinate_variable>,
+\cr # dimname_tolerance = <tolerance_value>,
+\cr # dimname_reorder = <reorder_function>,
+\cr # dimname_depends = <name_of_another_dimension>,
+\cr # dimname_across = <name_of_another_dimension>
+}
+\cr\cr
+The \bold{indices to take} can be specified in three possible formats (see 
+code comments above for examples). The first format consists in using 
+character tags, such as 'all' (take all the indices available for that 
+dimension), 'first' (take only the first) and 'last' (only the last). The 
+second format consists in using numeric indices, which have to be wrapped in a
+call to the indices() helper function. For the second format, either a
+vector of numeric indices can be provided, or a list with two numeric indices 
+can be provided to take all the indices in the range between the two specified
+indices (both extremes inclusive). The third format consists in providing a 
+vector character strings (for file dimensions) or of values of whichever type
+(for inner dimensions). For the file dimensions, the provided character 
+strings in the third format will be used as components to build up the final 
+path to the files (read further). For inner dimensions, the provided values in
+the third format will be compared to the values of an associated coordinate 
+variable (must be specified in '<dimname>_reorder', read further), and the 
+indices of the closest values will be retrieved. When using the third format, 
+a list with two values can also be provided to take all the indices of the 
+values within the specified range.
+\cr\cr
+The \bold{name of the associated coordinate variable} must be a character 
+string with the name of an associated coordinate variable to be found in the 
+data files (in all* of them). For this to work, a 'file_var_reader' 
+function must be specified when calling Start() (see parameter 
+'file_var_reader'). The coordinate variable must also be requested in the 
+parameter 'return_vars' (see its section for details). This feature only 
+works for inner dimensions.
+\cr\cr
+The \bold{tolerance value} is useful when indices for an inner dimension are 
+specified in the third format (values of whichever type). In that case, the 
+indices of the closest values in the coordinate variable are seeked. However 
+the closest value might be too distant and we would want to consider no real 
+match exists for such provided value. This is possible via the tolerance,
+which allows to specify a threshold beyond which not to seek for matching 
+values and mark that index as missing value.
+\cr\cr
+The \bold{reorder_function} is useful when indices for an inner dimension are
+specified in the third fromat, and the retrieved indices need to be reordered 
+in function of their provided associated variable values. A function can be 
+provided, which receives as input a vector of values, and returns as outputs a
+list with the components \code{$x} with the reordered values, and \code{$ix} 
+with the permutation indices. Two reordering functions are included in 
+startR, the Sort() and the CircularSort().
+\cr\cr
+The \bold{name of another dimension} to be specified in <dimname>_depends,
+only available for file dimensions, must be a character string with the name 
+of another requested \bold{file dimension} in \code{\dots}, and will make 
+Start() aware that the path components of a file dimension can vary in
+function of the path component of another file dimension. For instance, in the
+example above, specifying \code{item_depends = 'section'} will make 
+Start() aware that the item names vary in function of the section, i.e.
+section 'electronics' has items 'a', 'b' and 'c' but section 'clothing' has 
+items 'd', 'e', 'f'. Otherwise Start() would expect to find the same 
+item names in all the sections.
+If values() is used to define dimensions, it is possible to provide different 
+values of the depending dimension for each depended dimension values. For 
+example, if \code{section = c('electronics', 'clothing')}, we can use
+\code{item = list(electronics = c('a', 'b', 'c'), clothing = c('d', 'e', 'f'))}.
+\cr\cr
+The \bold{name of another dimension} to be specified in '<dimname>_across',
+only available for inner dimensions, must be a character string with the name 
+of another requested \bold{inner dimension} in \code{\dots}, and will make 
+Start() aware that an inner dimension extends along multiple files. For
+instance, let us imagine that in the example above, the records for each item 
+are so large that it becomes necessary to split them in multiple files each 
+one containing the registers for a different period of time, e.g. in 10 files 
+with 100 months each ('item_a_period1.data', 'item_a_period2.data', and so on).
+In that case, the data can be perceived as having an extra file dimension, the 
+'period' dimension. The inner dimension 'month' would extend across multiple 
+files, and providing the parameter \code{month = indices(1, 300)} would make 
+Start() crash because it would perceive we have made a request out of 
+bounds (each file contains 100 'month' indices, but we requested 1 to 300). 
+This can be solved by specifying the parameter \code{month_across = period} (a
+long with the full specification of the dimension 'period').
+\cr\cr
+\bold{Defining the path pattern}
+\cr
+As mentioned above, the parameter \dots also expects to receive information 
+with the location of the data files. In order to do this, a special dimension 
+must be defined. In that special dimension, in place of specifying indices to 
+take, a path pattern must be provided. The path pattern is a character string 
+that encodes the way the files are organized in their source. It must be a 
+path to one of the data set files in an accessible local or remote file system,
+or a URL to one of the files provided by a local or remote server. The regions
+of this path that vary across files (along the file dimensions) must be 
+replaced by wildcards. The wildcards must match any of the defined file 
+dimensions in the call to Start() and must be delimited with heading 
+and trailing '$'. Shell globbing expressions can be used in the path pattern. 
+See the next code snippet for an example of a path pattern.
+\cr\cr
+All in all, the call to Start() to load the entire data set in the 
+example of store item sales, would look as follows:
+\cr
+\command{
+\cr # data <- Start(source = paste0('/data/$variable$/',
+\cr #                               '$section$/$item$.data'),
+\cr #               variable = 'all',
+\cr #               section = 'all',
+\cr #               item = 'all',
+\cr #               item_depends = 'section',
+\cr #               store = 'all',
+\cr #               month = 'all')
+}
+\cr\cr
+Note that in this example it would still be pending to properly define the 
+parameters 'file_opener', 'file_closer', 'file_dim_reader', 
+'file_var_reader' and 'file_data_reader' for the '.data' file format
+(see the corresponding sections).
+\cr\cr
+The call to Start() will return a multidimensional R array with the 
+following dimensions:
+\cr
+\command{
+\cr #  source variable  section      item    store    month
+\cr #       1        2        2         3      100       24
+}
+\cr
+The dimension specifications in the \code{\dots} do not have to follow any 
+particular order. The returned array will have the dimensions in the same order
+as they have been specified in the call. For example, the following call:
+\cr
+\command{
+\cr # data <- Start(source = paste0('/data/$variable$/',
+\cr #                               '$section$/$item$.data'),
+\cr #               month = 'all',
+\cr #               store = 'all',
+\cr #               item = 'all',
+\cr #               item_depends = 'section',
+\cr #               section = 'all',
+\cr #               variable = 'all')
+}
+\cr\cr
+would return an array with the following dimensions:
+\cr
+\command{
+\cr #  source    month    store      item  section variable
+\cr #       1       24      100         3        2        2
+}
+\cr\cr
+Next, a more advanced example to retrieve data for only the sales records, for
+the first section ('electronics'), for the 1st and 3rd items and for the 
+stores located in Barcelona (assuming the files contain the variable 
+'store_location' with the name of the city each of the 100 stores are located 
+at):
+\cr
+\command{
+\cr # data <- Start(source = paste0('/data/$variable$/',
+\cr #                               '$section$/$item$.data'),
+\cr #               variable = 'sales',
+\cr #               section = 'first',
+\cr #               item = indices(c(1, 3)),
+\cr #               item_depends = 'section',
+\cr #               store = 'Barcelona',
+\cr #               store_var = 'store_location',
+\cr #               month = 'all',
+\cr #               return_vars = list(store_location = NULL))
+}
+\cr\cr
+The defined names for the dimensions do not necessarily have to match the 
+names of the dimensions inside the file. Lists of alternative names to be 
+seeked can be defined in the parameter 'synonims'.
+\cr\cr
+If data from multiple sources (not necessarily following the same structure) 
+has to be retrieved, it can be done by providing a vector of character strings
+with path pattern specifications, or, in the extended form, by providing a 
+list of lists with the components 'name' and 'path', and the name of the 
+dataset and path pattern as values, respectively. For example:
+\cr
+\command{
+\cr # data <- Start(source = list(
+\cr #                 list(name = 'sourceA',
+\cr #                      path = paste0('/sourceA/$variable$/',
+\cr #                                    '$section$/$item$.data')),
+\cr #                 list(name = 'sourceB',
+\cr #                      path = paste0('/sourceB/$section$/',
+\cr #                                    '$variable$/$item$.data'))
+\cr #               ),
+\cr #               variable = 'sales',
+\cr #               section = 'first',
+\cr #               item = indices(c(1, 3)),
+\cr #               item_depends = 'section',
+\cr #               store = 'Barcelona',
+\cr #               store_var = 'store_location',
+\cr #               month = 'all',
+\cr #               return_vars = list(store_location = NULL))
+}
+\cr}
+
 \item{return_vars}{A named list where the names are the names of the 
 variables to be fetched in the files, and the values are vectors of 
 character strings with the names of the file dimension which to retrieve each
@@ -320,7 +611,8 @@ It is helpful when the length of the to-be-merged dimension is different
 across another dimension. For example, if the dimension 'time' extends 
 across dimension 'chunk', and the time length along the first chunk is 2 
 while along the second chunk is 10. Setting this parameter as TRUE can 
-remove the additional 8 NAs at position 3 to 10. The default value is FALSE.}
+remove the additional 8 NAs at position 3 to 10. The default value is TRUE,
+but will be automatically turned to FALSE if 'merge_across_dims = FALSE'.}
 
 \item{split_multiselected_dims}{A logical value indicating whether to split a 
 dimension that has been selected with a multidimensional array of selectors
@@ -405,276 +697,6 @@ or not (TRUE). The default value is FALSE.}
 \item{debug}{A logical value of whether to return detailed messages on the
 progress and operations in a Start() call (TRUE) or not (FALSE). The
 default value is FALSE.}
-
-\item{\dots}{A selection of custemized parameters depending on the data 
-format. When we retrieve data from one or a collection of data sets, 
-the involved data can be perceived as belonging to a large multi-dimensional 
-array. For instance, let us consider an example case. We want to retrieve data
-from a source, which contains data for the number of monthly sales of various 
-items, and also for their retail price each month. The data on source is 
-stored as follows:\cr\cr
-\command{
-\cr #  /data/
-\cr #    |-> sales/
-\cr #    |    |-> electronics
-\cr #    |    |    |-> item_a.data
-\cr #    |    |    |-> item_b.data
-\cr #    |    |    |-> item_c.data
-\cr #    |    |-> clothing
-\cr #    |         |-> item_d.data
-\cr #    |         |-> idem_e.data
-\cr #    |         |-> idem_f.data
-\cr #    |-> prices/
-\cr #         |-> electronics
-\cr #         |    |-> item_a.data
-\cr #         |    |-> item_b.data
-\cr #         |    |-> item_c.data
-\cr #         |-> clothing
-\cr #              |-> item_d.data
-\cr #              |-> item_e.data
-\cr #              |-> item_f.data
-}\cr\cr
-Each item file contains data, stored in whichever format, for the sales or 
-prices over a time period, e.g. for the past 24 months, registered at 100 
-different stores over the world. Whichever the format it is stored in, each 
-file can be perceived as a container of a data array of 2 dimensions, time and
-store. Let us assume the '.data' format allows to keep a name for each of 
-these dimensions, and the actual names are 'time' and 'store'.\cr\cr
-The different item files for sales or prices can be perceived as belonging to 
-an 'item' dimension of length 3, and the two groups of three items to a 
-'section' dimension of length 2, and the two groups of two sections (one with
-the sales and the other with the prices) can be perceived as belonging also to
-another dimension 'variable' of length 2. Even the source can be perceived as 
-belonging to a dimension 'source' of length 1.\cr\cr
-All in all, in this example, the whole data could be perceived as belonging to
-a multidimensional 'large array' of dimensions\cr
-\command{
-\cr #  source variable  section      item    store    month
-\cr #       1        2        2         3      100       24
-}
-\cr\cr
-The dimensions of this 'large array' can be classified in two types. The ones 
-that group actual files (the file dimensions) and the ones that group data 
-values inside the files (the inner dimensions). In the example, the file 
-dimensions are 'source', 'variable', 'section' and 'item', whereas the inner 
-dimensions are 'store' and 'month'.
-\cr\cr
-Having the dimensions of our target sources in mind, the parameter \code{\dots} 
-expects to receive information on:
-   \itemize{
-     \item{
-The names of the expected dimensions of the 'large dataset' we want to 
-retrieve data from
-     }
-     \item{
-The indices to take from each dimension (and other constraints)
-     }
-     \item{
-How to reorder the dimension if needed
-     }
-     \item{
-The location and organization of the files of the data sets
-     }
-   }
-For each dimension, the 3 first information items can be specified with a set
-of parameters to be provided through \code{\dots}. For a given dimension 
-'dimname', six parameters can be specified:\cr
-\command{
-\cr # dimname = <indices_to_take>,  # 'all' / 'first' / 'last' /
-\cr #                               # indices(c(1, 10, 20)) /
-\cr #                               # indices(c(1:20)) /
-\cr #                               # indices(list(1, 20)) /
-\cr #                               # c(1, 10, 20) / c(1:20) /
-\cr #                               # list(1, 20)
-\cr # dimname_var = <name_of_associated_coordinate_variable>,
-\cr # dimname_tolerance = <tolerance_value>,
-\cr # dimname_reorder = <reorder_function>,
-\cr # dimname_depends = <name_of_another_dimension>,
-\cr # dimname_across = <name_of_another_dimension>
-}
-\cr\cr
-The \bold{indices to take} can be specified in three possible formats (see 
-code comments above for examples). The first format consists in using 
-character tags, such as 'all' (take all the indices available for that 
-dimension), 'first' (take only the first) and 'last' (only the last). The 
-second format consists in using numeric indices, which have to be wrapped in a
-call to the indices() helper function. For the second format, either a
-vector of numeric indices can be provided, or a list with two numeric indices 
-can be provided to take all the indices in the range between the two specified
-indices (both extremes inclusive). The third format consists in providing a 
-vector character strings (for file dimensions) or of values of whichever type
-(for inner dimensions). For the file dimensions, the provided character 
-strings in the third format will be used as components to build up the final 
-path to the files (read further). For inner dimensions, the provided values in
-the third format will be compared to the values of an associated coordinate 
-variable (must be specified in '<dimname>_reorder', read further), and the 
-indices of the closest values will be retrieved. When using the third format, 
-a list with two values can also be provided to take all the indices of the 
-values within the specified range.
-\cr\cr
-The \bold{name of the associated coordinate variable} must be a character 
-string with the name of an associated coordinate variable to be found in the 
-data files (in all* of them). For this to work, a 'file_var_reader' 
-function must be specified when calling Start() (see parameter 
-'file_var_reader'). The coordinate variable must also be requested in the 
-parameter 'return_vars' (see its section for details). This feature only 
-works for inner dimensions.
-\cr\cr
-The \bold{tolerance value} is useful when indices for an inner dimension are 
-specified in the third format (values of whichever type). In that case, the 
-indices of the closest values in the coordinate variable are seeked. However 
-the closest value might be too distant and we would want to consider no real 
-match exists for such provided value. This is possible via the tolerance,
-which allows to specify a threshold beyond which not to seek for matching 
-values and mark that index as missing value.
-\cr\cr
-The \bold{reorder_function} is useful when indices for an inner dimension are
-specified in the third fromat, and the retrieved indices need to be reordered 
-in function of their provided associated variable values. A function can be 
-provided, which receives as input a vector of values, and returns as outputs a
-list with the components \code{$x} with the reordered values, and \code{$ix} 
-with the permutation indices. Two reordering functions are included in 
-startR, the Sort() and the CircularSort().
-\cr\cr
-The \bold{name of another dimension} to be specified in <dimname>_depends,
-only available for file dimensions, must be a character string with the name 
-of another requested \bold{file dimension} in \code{\dots}, and will make 
-Start() aware that the path components of a file dimension can vary in
-function of the path component of another file dimension. For instance, in the
-example above, specifying \code{item_depends = 'section'} will make 
-Start() aware that the item names vary in function of the section, i.e.
-section 'electronics' has items 'a', 'b' and 'c' but section 'clothing' has 
-items 'd', 'e', 'f'. Otherwise Start() would expect to find the same 
-item names in all the sections.
-\cr\cr
-The \bold{name of another dimension} to be specified in '<dimname>_across',
-only available for inner dimensions, must be a character string with the name 
-of another requested \bold{inner dimension} in \code{\dots}, and will make 
-Start() aware that an inner dimension extends along multiple files. For
-instance, let us imagine that in the example above, the records for each item 
-are so large that it becomes necessary to split them in multiple files each 
-one containing the registers for a different period of time, e.g. in 10 files 
-with 100 months each ('item_a_period1.data', 'item_a_period2.data', and so on).
-In that case, the data can be perceived as having an extra file dimension, the 
-'period' dimension. The inner dimension 'month' would extend across multiple 
-files, and providing the parameter \code{month = indices(1, 300)} would make 
-Start() crash because it would perceive we have made a request out of 
-bounds (each file contains 100 'month' indices, but we requested 1 to 300). 
-This can be solved by specifying the parameter \code{month_across = period} (a
-long with the full specification of the dimension 'period').
-\cr\cr
-\bold{Defining the path pattern}
-\cr
-As mentioned above, the parameter \dots also expects to receive information 
-with the location of the data files. In order to do this, a special dimension 
-must be defined. In that special dimension, in place of specifying indices to 
-take, a path pattern must be provided. The path pattern is a character string 
-that encodes the way the files are organized in their source. It must be a 
-path to one of the data set files in an accessible local or remote file system,
-or a URL to one of the files provided by a local or remote server. The regions
-of this path that vary across files (along the file dimensions) must be 
-replaced by wildcards. The wildcards must match any of the defined file 
-dimensions in the call to Start() and must be delimited with heading 
-and trailing '$'. Shell globbing expressions can be used in the path pattern. 
-See the next code snippet for an example of a path pattern.
-\cr\cr
-All in all, the call to Start() to load the entire data set in the 
-example of store item sales, would look as follows:
-\cr
-\command{
-\cr # data <- Start(source = paste0('/data/$variable$/',
-\cr #                               '$section$/$item$.data'),
-\cr #               variable = 'all',
-\cr #               section = 'all',
-\cr #               item = 'all',
-\cr #               item_depends = 'section',
-\cr #               store = 'all',
-\cr #               month = 'all')
-}
-\cr\cr
-Note that in this example it would still be pending to properly define the 
-parameters 'file_opener', 'file_closer', 'file_dim_reader', 
-'file_var_reader' and 'file_data_reader' for the '.data' file format
-(see the corresponding sections).
-\cr\cr
-The call to Start() will return a multidimensional R array with the 
-following dimensions:
-\cr
-\command{
-\cr #  source variable  section      item    store    month
-\cr #       1        2        2         3      100       24
-}
-\cr
-The dimension specifications in the \code{\dots} do not have to follow any 
-particular order. The returned array will have the dimensions in the same order
-as they have been specified in the call. For example, the following call:
-\cr
-\command{
-\cr # data <- Start(source = paste0('/data/$variable$/',
-\cr #                               '$section$/$item$.data'),
-\cr #               month = 'all',
-\cr #               store = 'all',
-\cr #               item = 'all',
-\cr #               item_depends = 'section',
-\cr #               section = 'all',
-\cr #               variable = 'all')
-}
-\cr\cr
-would return an array with the following dimensions:
-\cr
-\command{
-\cr #  source    month    store      item  section variable
-\cr #       1       24      100         3        2        2
-}
-\cr\cr
-Next, a more advanced example to retrieve data for only the sales records, for
-the first section ('electronics'), for the 1st and 3rd items and for the 
-stores located in Barcelona (assuming the files contain the variable 
-'store_location' with the name of the city each of the 100 stores are located 
-at):
-\cr
-\command{
-\cr # data <- Start(source = paste0('/data/$variable$/',
-\cr #                               '$section$/$item$.data'),
-\cr #               variable = 'sales',
-\cr #               section = 'first',
-\cr #               item = indices(c(1, 3)),
-\cr #               item_depends = 'section',
-\cr #               store = 'Barcelona',
-\cr #               store_var = 'store_location',
-\cr #               month = 'all',
-\cr #               return_vars = list(store_location = NULL))
-}
-\cr\cr
-The defined names for the dimensions do not necessarily have to match the 
-names of the dimensions inside the file. Lists of alternative names to be 
-seeked can be defined in the parameter 'synonims'.
-\cr\cr
-If data from multiple sources (not necessarily following the same structure) 
-has to be retrieved, it can be done by providing a vector of character strings
-with path pattern specifications, or, in the extended form, by providing a 
-list of lists with the components 'name' and 'path', and the name of the 
-dataset and path pattern as values, respectively. For example:
-\cr
-\command{
-\cr # data <- Start(source = list(
-\cr #                 list(name = 'sourceA',
-\cr #                      path = paste0('/sourceA/$variable$/',
-\cr #                                    '$section$/$item$.data')),
-\cr #                 list(name = 'sourceB',
-\cr #                      path = paste0('/sourceB/$section$/',
-\cr #                                    '$variable$/$item$.data'))
-\cr #               ),
-\cr #               variable = 'sales',
-\cr #               section = 'first',
-\cr #               item = indices(c(1, 3)),
-\cr #               item_depends = 'section',
-\cr #               store = 'Barcelona',
-\cr #               store_var = 'store_location',
-\cr #               month = 'all',
-\cr #               return_vars = list(store_location = NULL))
-}
-\cr}
 }
 \value{
 If \code{retrieve = TRUE} the involved data is loaded into RAM memory
@@ -830,4 +852,3 @@ file format.
                retrieve = FALSE)
 
 }
-

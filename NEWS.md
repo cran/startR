@@ -1,3 +1,21 @@
+# startR v2.2.0 (Release date: 2022-02-11)  
+- License changes to Apache License 2.0  
+- R version dependency changes to >= 3.6.0  
+- The dependency on s2dverification changes to s2dv  
+- The transform parameter "crop" for CDORemapper() is deprecated. It is assigned as a vector of four numbers of the range of latitude and longitude selectors automatically by Start().  
+- Chunking the transformed dimensions is available.  
+- The transform and reorder function works with selector 'all' and indices() now.  
+- Initialize big.matrix in Start() as NA when parameter "ObjectBigmemory" is specified or when the job is submitted to remote machine by Compute().  
+- Bugfix of naming the chunks submitted to remote machine. It prevents job crashes when chunk_1 and chunk_11 run at the same time, for example.  
+- Adjust time attribute to UTC instead of local time zone, and correct the time calculation according to calendar type and units.  
+- The default value of Start() parameter "merge_across_dims_narm" is changed to TRUE.  
+- The metadata of startR object is refined. Different datasets are recorded separately.  
+- Force return_vars to have value when inner dim has dependency on file dim.  
+- Correct the wrong names of return_vars. If the names of return_vars are synonyms, change them back to the inner dim names.  
+- When merging one inner dimension across files, Start() can notice the different inner dimension length of files and merge without extra NAs. Need to specify "largest_dims_length = TRUE".  
+- Bugfixes for several reshaping problems with different combinations of parameters "merge_across_dims", "merge_across_dims_narm", and "split_multiselected_dims".  
+- Modify the dimension consistency check to only check margin dimensions. The target dimensions can have different lengths.  
+
 # startR v2.1.0 (Release date: 2020-10-30)
 - Bugfix for metadata retrieving when there are more than one dataset and one of them is missing.
 - Bugfix for the Start() parameter 'metadata_dims' is set to non-dat dimension.

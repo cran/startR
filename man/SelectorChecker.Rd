@@ -4,8 +4,7 @@
 \alias{SelectorChecker}
 \title{Translate a set of selectors into a set of numeric indices}
 \usage{
-SelectorChecker(selectors, var = NULL, return_indices = TRUE,
-  tolerance = NULL)
+SelectorChecker(selectors, var = NULL, return_indices = TRUE, tolerance = NULL)
 }
 \arguments{
 \item{selectors}{A vector or a list of two of numeric indices or variable 
@@ -50,4 +49,3 @@ sub_array_of_values <- seq(90, -90, length.out = 258)[2:257]
 SelectorChecker(sub_array_of_selectors, sub_array_of_values)
 
 }
-

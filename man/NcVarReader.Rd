@@ -4,8 +4,13 @@
 \alias{NcVarReader}
 \title{NetCDF variable reader for 'startR'}
 \usage{
-NcVarReader(file_path = NULL, file_object = NULL, file_selectors = NULL,
-  var_name = NULL, synonims)
+NcVarReader(
+  file_path = NULL,
+  file_object = NULL,
+  file_selectors = NULL,
+  var_name = NULL,
+  synonims
+)
 }
 \arguments{
 \item{file_path}{A character string indicating the path to the data file to 
@@ -58,4 +63,3 @@ nc_var_get() in the package 'ncdf4'.
 \code{\link{NcOpener}} \code{\link{NcDataReader}} 
  \code{\link{NcCloser}} \code{\link{NcDimReader}}
 }
-

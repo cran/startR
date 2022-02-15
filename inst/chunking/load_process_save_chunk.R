@@ -73,8 +73,19 @@ for (input in 1:length(data)) {
   # Creates a name for the temporal file using the chunks numbers:
   nameMemoryObject <- gsub("[^0-9.-]", "_", gsub(out_dir, "", task_path))
   nameMemoryObject <- substr(nameMemoryObject, 2, nchar(nameMemoryObject))
-  removeRS <- function(str) paste(rle(strsplit(str, "")[[1]])$values, collapse = "")
-  nameMemoryObject <- removeRS(nameMemoryObject)
+  removeRS <- function(str) {
+    vec <- strsplit(str, "")[[1]]
+    res <- vec[1]
+    for (i in 2:length(vec)) {
+      if (!is.na(as.numeric(vec[i], supressWarnings = TRUE))) {
+        res <- c(res, vec[i])
+      } else if (res[length(res)] != vec[i]) {
+        res <- c(res, vec[i])
+      }
+    }
+    return(paste(res, collapse = "")) 
+  }
+  nameMemoryObject <- suppressWarnings(removeRS(nameMemoryObject))
   start_call[['ObjectBigmemory']] <- nameMemoryObject
   data[[input]] <- tryCatch(eval(start_call),
                      # Handler when an error occurs:

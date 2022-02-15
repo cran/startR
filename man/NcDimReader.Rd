@@ -4,8 +4,13 @@
 \alias{NcDimReader}
 \title{NetCDF dimension reader for 'startR'}
 \usage{
-NcDimReader(file_path = NULL, file_object = NULL, file_selectors = NULL,
-  inner_indices = NULL, synonims)
+NcDimReader(
+  file_path = NULL,
+  file_object = NULL,
+  file_selectors = NULL,
+  inner_indices = NULL,
+  synonims
+)
 }
 \arguments{
 \item{file_path}{A character string indicating the path to the data file to 
@@ -58,4 +63,3 @@ This function uses the function NcReadDims() in the package 'easyNCDF'.
 \code{\link{NcOpener}} \code{\link{NcDataReader}} 
  \code{\link{NcCloser}} \code{\link{NcVarReader}}
 }
-

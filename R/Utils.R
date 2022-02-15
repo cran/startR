@@ -34,8 +34,8 @@
     }
     old_indices <- attr(selectors, 'indices')
     old_values <- attr(selectors, 'values')
-    selectors <- ClimProjDiags::Subset(selectors, 1:length(chunk), 
-                                       lapply(1:length(chunk), 
+    selectors <- ClimProjDiags::Subset(selectors, names(chunk),
+                                       lapply(names(chunk),
                                function(x) {
                                  n_indices <- dim(selectors)[x]
                                  chunk_sizes <- rep(floor(n_indices / n_chunks[x]), n_chunks[x])

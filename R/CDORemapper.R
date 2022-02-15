@@ -5,7 +5,7 @@
 #''transform' in a Start() call. This function complies with the input/output 
 #'interface required by Start() defined in the documentation for the parameter 
 #''transform' of function Start().\cr\cr
-#'This function uses the function CDORemap() in the package 's2dverification' to 
+#'This function uses the function CDORemap() in the package 's2dv' to 
 #'perform the interpolation, hence CDO is required to be installed.
 #'
 #'@param data_array A data array to be transformed. See details in the 
@@ -16,6 +16,8 @@
 #'@param file_selectors A charcter vector indicating the information of the path of
 #'  the file parameter 'data_array' comes from. See details in the documentation of
 #'  the parameter 'transform' of the function Start(). The default value is NULL.
+#'@param crop_domain A list of the transformed domain of each transform 
+#'  variable, automatically provided by Start().
 #'@param \dots A list of additional parameters to adjust the transform process, 
 #'  as provided in the parameter 'transform_params' in a Start() call. See details
 #'  in the documentation of the parameter 'transform' of the function Start().
@@ -24,7 +26,7 @@
 #'  potentially with different sizes, and potentially with the attribute 
 #'  'variables' with additional auxiliary data. See details in the documentation 
 #'  of the parameter 'transform' of the function Start().
-#'@seealso \code{\link[s2dverification]{CDORemap}}
+#'@seealso \code{\link[s2dv]{CDORemap}}
 #'
 #'@examples
 #'# Used in Start():
@@ -42,20 +44,21 @@
 #'                longitude_reorder = CircularSort(-180, 180),
 #'                transform = CDORemapper,
 #'                transform_params = list(grid = 'r360x181',
-#'                                        method = 'conservative',
-#'                                        crop = c(-120, 120, -60, 60)),
+#'                                        method = 'conservative'),
 #'                transform_vars = c('latitude', 'longitude'),
 #'                return_vars = list(latitude = 'dat',
 #'                                   longitude = 'dat',
 #'                                   time = 'sdate'),
 #'                retrieve = FALSE)
 #' }
-#'@importFrom s2dverification CDORemap
+#'@importFrom s2dv CDORemap
+#'@importFrom utils getFromNamespace
 #'@export
-CDORemapper <- function(data_array, variables, file_selectors = NULL, ...) {
+CDORemapper <- function(data_array, variables, file_selectors = NULL, 
+                        crop_domain = NULL, ...) {
   file_dims <- names(file_selectors)
-  known_lon_names <- .KnownLonNames()
-  known_lat_names <- .KnownLatNames()
+  known_lon_names <- getFromNamespace('.KnownLonNames', 'startR')()
+  known_lat_names <- getFromNamespace('.KnownLatNames', 'startR')()
   if (!any(known_lon_names %in% names(variables)) ||
       !any(known_lat_names %in% names(variables))) {
     stop("The longitude and latitude variables must be requested in ",
@@ -89,11 +92,31 @@ CDORemapper <- function(data_array, variables, file_selectors = NULL, ...) {
     }
   }
   extra_params <- list(...)
+
   if (!all(c('grid', 'method') %in% names(extra_params))) {
     stop("Parameters 'grid' and 'method' must be specified for the ",
          "CDORemapper, via the 'transform_params' argument.")
   }
-  result <- s2dverification::CDORemap(data_array, lons, lats, ...)
+
+  # Use crop_domain to get 'crop'
+  if (!is.null(crop_domain)) {
+    ## lon
+    lon_name <- names(crop_domain)[which(names(crop_domain) %in% known_lon_names)]
+    crop_lon <- unlist(crop_domain[[lon_name]])
+    ## lat
+    lat_name <- names(crop_domain)[which(names(crop_domain) %in% known_lat_names)]
+    crop_lat <- unlist(crop_domain[[lat_name]])
+    crop_values <- c(crop_lon, crop_lat)
+
+    if ('crop' %in% names(extra_params)) {
+      warning("Argument 'crop' in 'transform_params' for CDORemapper() is ",
+               "deprecated. It is automatically assigned as the selected domain ",
+               "in Start() call.")
+    }
+    extra_params[['crop']] <- crop_values
+  }
+
+  result <- do.call(s2dv::CDORemap, c(list(data_array, lons, lats), extra_params))
   return_variables <- list(result$lons, result$lats)
   names(return_variables) <- c(lon_name, lat_name)
   list(data_array = result$data_array, variables = return_variables)

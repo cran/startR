@@ -34,4 +34,3 @@ NcCloser(connection)
 \code{\link{NcDimReader}} \code{\link{NcDataReader}} 
  \code{\link{NcCloser}} \code{\link{NcVarReader}}
 }
-

@@ -41,4 +41,3 @@ coordinate variable. See details in the documentation of the parameter
 \seealso{
 \code{\link{indices}}
 }
-

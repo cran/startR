@@ -4,9 +4,18 @@
 \alias{Compute}
 \title{Specify the execution parameters and trigger the execution}
 \usage{
-Compute(workflow, chunks = "auto", threads_load = 1, threads_compute = 1,
-  cluster = NULL, ecflow_suite_dir = NULL, ecflow_server = NULL,
-  silent = FALSE, debug = FALSE, wait = TRUE)
+Compute(
+  workflow,
+  chunks = "auto",
+  threads_load = 1,
+  threads_compute = 1,
+  cluster = NULL,
+  ecflow_suite_dir = NULL,
+  ecflow_server = NULL,
+  silent = FALSE,
+  debug = FALSE,
+  wait = TRUE
+)
 }
 \arguments{
 \item{workflow}{A list of the class 'startR_workflow' returned by function 
@@ -104,4 +113,3 @@ arrays and additional metadata.
  res <- Compute(wf, chunks = list(longitude = 4, sdate = 2))
 
 }
-

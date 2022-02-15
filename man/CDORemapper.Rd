@@ -4,7 +4,13 @@
 \alias{CDORemapper}
 \title{CDO Remap Data Transformation for 'startR'}
 \usage{
-CDORemapper(data_array, variables, file_selectors = NULL, ...)
+CDORemapper(
+  data_array,
+  variables,
+  file_selectors = NULL,
+  crop_domain = NULL,
+  ...
+)
 }
 \arguments{
 \item{data_array}{A data array to be transformed. See details in the 
@@ -17,6 +23,9 @@ parameter 'transform' of the function Start().}
 \item{file_selectors}{A charcter vector indicating the information of the path of
 the file parameter 'data_array' comes from. See details in the documentation of
 the parameter 'transform' of the function Start(). The default value is NULL.}
+
+\item{crop_domain}{A list of the transformed domain of each transform 
+variable, automatically provided by Start().}
 
 \item{\dots}{A list of additional parameters to adjust the transform process, 
 as provided in the parameter 'transform_params' in a Start() call. See details
@@ -34,7 +43,7 @@ data subsets onto a specified target grid, intended for use as parameter
 'transform' in a Start() call. This function complies with the input/output 
 interface required by Start() defined in the documentation for the parameter 
 'transform' of function Start().\cr\cr
-This function uses the function CDORemap() in the package 's2dverification' to 
+This function uses the function CDORemap() in the package 's2dv' to 
 perform the interpolation, hence CDO is required to be installed.
 }
 \examples{
@@ -53,8 +62,7 @@ perform the interpolation, hence CDO is required to be installed.
                longitude_reorder = CircularSort(-180, 180),
                transform = CDORemapper,
                transform_params = list(grid = 'r360x181',
-                                       method = 'conservative',
-                                       crop = c(-120, 120, -60, 60)),
+                                       method = 'conservative'),
                transform_vars = c('latitude', 'longitude'),
                return_vars = list(latitude = 'dat',
                                   longitude = 'dat',
@@ -63,6 +71,5 @@ perform the interpolation, hence CDO is required to be installed.
 }
 }
 \seealso{
-\code{\link[s2dverification]{CDORemap}}
+\code{\link[s2dv]{CDORemap}}
 }
-

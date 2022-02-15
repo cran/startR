@@ -4,8 +4,13 @@
 \alias{Step}
 \title{Define the operation applied on declared data.}
 \usage{
-Step(fun, target_dims, output_dims, use_libraries = NULL,
-  use_attributes = NULL)
+Step(
+  fun,
+  target_dims,
+  output_dims,
+  use_libraries = NULL,
+  use_attributes = NULL
+)
 }
 \arguments{
 \item{fun}{A function in R format defining the operation to be applied to the 
@@ -70,4 +75,3 @@ to the expected order for this function.
  wf <- AddStep(data, step)
 
 }
-

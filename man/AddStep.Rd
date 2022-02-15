@@ -54,4 +54,3 @@ create the complete workflow. It is the final step before data processing.
  wf <- AddStep(data, step, pi_val = pi_short)
 
 }
-
