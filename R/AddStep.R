@@ -41,22 +41,22 @@
 #'               use_attributes = list(data = "Variables"))
 #'  wf <- AddStep(data, step, pi_val = pi_short)
 #'
+#'@importFrom methods is
 #'@export
 AddStep <- function(inputs, step_fun, ...) {
   # Check step_fun
-  if (!('startR_step_fun' %in% class(step_fun))) {
+  if (!is(step_fun, 'startR_step_fun')) {
     stop("Parameter 'step_fun' must be a startR step function as returned by Step.")
   }
   
   # Check inputs
-  if (any(c('startR_cube', 'startR_workflow') %in% class(inputs))) {
+  if (is(inputs, 'startR_cube') | is(inputs, 'startR_workflow')) {
     inputs <- list(inputs)
     names(inputs) <- 'input1'
   }
   else if (is.list(inputs)) {
     if (any(!sapply(inputs, 
-                    function(x) any(c('startR_cube', 
-                                      'startR_workflow') %in% class(x))))) {
+                    function(x) is(x, 'startR_cube') | is(x, 'startR_workflow')))) {
       stop("Parameter 'inputs' must be one or a list of objects of the class ",
            "'startR_cube' or 'startR_workflow'.")
     }
@@ -90,7 +90,7 @@ AddStep <- function(inputs, step_fun, ...) {
       stop("The target dimensions required by 'step_fun' for the input ", input, 
            " are not present in the corresponding provided object in 'inputs'.")
     }
-    if ('startR_workflow' %in% class(inputs[[input]])) {
+    if (is(inputs[[input]], 'startR_workflow')) {
       if (is.null(previous_target_dims)) {
         previous_target_dims <- attr(inputs[[input]], 'TargetDims')
       } else {

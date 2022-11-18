@@ -36,7 +36,7 @@ to use for the computation. The default value is 1.}
 
 \item{cluster}{A list of components that define the configuration of the 
 machine to be run on. The comoponents vary from the different machines.
-Check \href{https://earth.bsc.es/gitlab/es/startR/}{startR GitLab} for more 
+Check \href{https://earth.bsc.es/gitlab/es/startR/-/blob/master/inst/doc/practical_guide.md}{Practical guide on GitLab} for more 
 details and examples. Only needed when the computation is not run locally. 
 The default value is NULL.}
 

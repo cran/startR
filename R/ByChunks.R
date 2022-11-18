@@ -80,6 +80,7 @@
 #' #ByChunks(step, data)
 #'
 #'@import multiApply
+#'@importFrom methods is
 #'@noRd
 ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
                      threads_load = 2, threads_compute = 1, 
@@ -109,7 +110,7 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
   MergeArrays <- .MergeArrays
   
   # Check input headers
-  if ('startR_cube' %in% class(cube_headers)) {
+  if (is(cube_headers, 'startR_cube')) {
     cube_headers <- list(cube_headers)
   }
   if (!all(sapply(lapply(cube_headers, class), 
@@ -411,7 +412,7 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
   timings[['nchunks']] <- prod(unlist(chunks))
   
   # Check step_fun
-  if (!('startR_step_fun' %in% class(step_fun))) {
+  if (!is(step_fun, 'startR_step_fun')) {
     stop("Parameter 'step_fun' must be of the class 'startR_step_fun', as returned ",
          "by the function Step.")
   }

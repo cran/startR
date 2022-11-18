@@ -118,6 +118,9 @@ rebuild_dim_params <- function(dim_params, merge_across_dims,
     # Reallocating pairs of across file and inner dimensions if they have
     # to be merged. They are put one next to the other to ease merge later.
     if (merge_across_dims) {
+      if (any(!names(inner_dims_across_files) %in% names(dim_params)) |
+          any(!unlist(inner_dims_across_files) %in% names(dim_params)))
+        stop("All *_across parameters must have value as a file dimension name.")
       for (inner_dim_across in names(inner_dims_across_files)) {
         inner_dim_pos <- which(names(dim_params) == inner_dim_across)
         file_dim_pos <- which(names(dim_params) == inner_dims_across_files[[inner_dim_across]])
@@ -429,7 +432,7 @@ correct_return_vars <- function(inner_dim, inner_dims_across_files, found_patter
                                 file_dim_as_selector_array_dim) {
     # inner_dim is not in return_vars or is NULL
       if (is.character(file_dim_as_selector_array_dim)) { #(1)
-        if (file_dim_as_selector_array_dim %in% found_pattern_dim) {
+        if (any(file_dim_as_selector_array_dim %in% found_pattern_dim)) {
           stop(paste0("Found '", inner_dim, "' selector has dimension of the pattern dim '",
                       found_pattern_dim, 
                       "', which is not allowed. To assign the dependency on the pattern dim, ",
@@ -446,10 +449,10 @@ correct_return_vars <- function(inner_dim, inner_dims_across_files, found_patter
           corrected_value <- file_dim_name
         }
       }
-      .warning(paste0("Found ", inner_dim, " dependency on file diemnsion '", corrected_value,
-                      "', but '", inner_dim, "' is not in return_vars list or is NULL. ",
-                      "To provide the correct metadata, the value of ", inner_dim,
-                      " in 'return_vars' is specified as '", corrected_value, "'."))
+      .warning(paste0("Found '", inner_dim, "' dependency on file dimension '", corrected_value,
+                      "', but '", inner_dim, "' is not in return_vars list or does not include '", corrected_value,
+                      "'. To provide the correct metadata, '", corrected_value, "' is included under '", inner_dim,
+                      "' in 'return_vars."))
   return(corrected_value)
 }
 
@@ -563,7 +566,7 @@ generate_vars_to_transform <- function(vars_to_transform, picked_vars, transform
 
 # Turn indices to values for transform_crop_domain
 generate_transform_crop_domain_values <- function(transform_crop_domain, picked_vars) {
-  if (transform_crop_domain == 'all') {
+  if (any(transform_crop_domain == 'all')) {
     transform_crop_domain <- c(picked_vars[1], tail(picked_vars, 1))
   } else {  # indices()
     if (is.list(transform_crop_domain)) {
@@ -689,9 +692,11 @@ generate_sub_array_of_fri <- function(with_transform, goes_across_prime_meridian
         } else if (start_padding < beta) {
           # left side too close to border, need to go to right side
           sub_array_of_fri <- c((first_index - start_padding):(last_index + end_padding), (n - (beta - start_padding - 1)):n)
+          sub_array_of_fri <- unique(sub_array_of_fri)
         } else if (end_padding < beta) {
           # right side too close to border, need to go to left side
           sub_array_of_fri <- c(1: (beta - end_padding), (first_index - start_padding):(last_index + end_padding))
+          sub_array_of_fri <- unique(sub_array_of_fri)
         }
       }
 
@@ -703,6 +708,7 @@ generate_sub_array_of_fri <- function(with_transform, goes_across_prime_meridian
       }
     }
   }
+  
   if (print_warning) {
     .warning(paste0("Adding parameter transform_extra_cells =  ", beta,
                     " to the transformed index excesses ",
@@ -822,6 +828,28 @@ reorder_split_dims <- function(all_split_dims, inner_dim_pos_in_split_dims, fina
   return(list(final_dims_fake, all_split_dims))
 }
 
+# Find the final_dims_fake for metadata if it needs to be reshaped
+find_final_dims_fake_metadata <- function(merge_across_dims, split_multiselected_dims,
+                                          picked_common_vars, across_inner_dim, final_dims_fake,
+                                          dims_of_merge_dim, all_split_dims) {
+  if (merge_across_dims) {
+    if (!split_multiselected_dims) {
+      final_dims_fake_metadata <- final_dims_fake[names(final_dims_fake) %in% names(dims_of_merge_dim)]
+    } else {
+      final_dims_fake_metadata <- final_dims_fake[names(final_dims_fake) %in% names(all_split_dims[[across_inner_dim]])]
+    }
+  } else if (split_multiselected_dims) {
+    target_split_dim_ind <- which(names(dim(picked_common_vars)) == names(all_split_dims))
+    margin_dim_ind <- c(1:length(dim(picked_common_vars)))[-target_split_dim_ind]
+    if (identical(margin_dim_ind, numeric(0)) | identical(margin_dim_ind, integer(0))) {
+      final_dims_fake_metadata <- all_split_dims[[1]]
+    } else {
+      final_dims_fake_metadata <- .ReplaceElementInVector(dim(picked_common_vars), target = names(all_split_dims), new_val = all_split_dims[[1]])
+    }
+  }
+  
+  return(final_dims_fake_metadata)
+}
 
 # Build the work pieces.
 build_work_pieces <- function(work_pieces, i, selectors, file_dims, inner_dims, final_dims, 
@@ -873,7 +901,16 @@ build_work_pieces <- function(work_pieces, i, selectors, file_dims, inner_dims, 
                                         x_dim_name <- attr(attr(selectors[[x]][['fri']], "dim"), "names")
                                         if (!is.null(x_dim_name)) {
                                           which_chunk <- file_to_load_sub_indices[x_dim_name]
-                                          selectors[[x]][['fri']][[which_chunk]]
+                                         if (length(which_chunk) > 1) {
+                                            tmp_dim <- attr(selectors[[x]][['fri']], "dim")
+                                            vec_ind <- which_chunk[1]
+                                            for (i_dim in length(tmp_dim):2) {
+                                              vec_ind <- vec_ind + (which_chunk[i_dim] - 1) * prod(tmp_dim[1:(i_dim - 1)])
+                                            }
+                                            selectors[[x]][['fri']][[vec_ind]]
+                                          } else {  #old code
+                                            selectors[[x]][['fri']][[which_chunk]]
+                                          }
                                         } else {
                                           selectors[[x]][['fri']][[1]]
                                         }
@@ -889,7 +926,16 @@ build_work_pieces <- function(work_pieces, i, selectors, file_dims, inner_dims, 
                                          x_dim_name <- attr(attr(selectors[[x]][['sri']], "dim"), "names")
                                          if (!is.null(x_dim_name)) {
                                            which_chunk <- file_to_load_sub_indices[x_dim_name]
-                                           selectors[[x]][['sri']][[which_chunk]]
+                                          if (length(which_chunk) > 1) {
+                                            tmp_dim <- attr(selectors[[x]][['sri']], "dim")
+                                            vec_ind <- which_chunk[1]
+                                            for (i_dim in length(tmp_dim):2) {
+                                              vec_ind <- vec_ind + (which_chunk[i_dim] - 1) * prod(tmp_dim[1:(i_dim - 1)])
+                                            }
+                                            selectors[[x]][['sri']][[vec_ind]]
+                                          } else {  #old code
+                                             selectors[[x]][['sri']][[which_chunk]]
+                                          }
                                          } else {
                                            selectors[[x]][['sri']][[1]]
                                          }
@@ -1028,9 +1074,13 @@ retrieve_progress_message <- function(work_pieces, num_procs, silent) {
 
 # If merge_across_dims = TRUE and merge_across_dims_narm = TRUE, remove the additional NAs 
 # due to unequal inner_dim ('time') length across file_dim ('sdate').
-remove_additional_na_from_merge <- function(inner_dims_across_files, final_dims, across_inner_dim,
-                                            length_inner_across_dim, data_array) {
+remove_additional_na_from_merge <- function(data_array = NULL, merge_dim_metadata = NULL,
+                                            inner_dims_across_files, final_dims, length_inner_across_dim) {
+  # data_array is a vector from bigmemory::as.matrix
+  # merge_dim_metadata is an array
+
   across_file_dim <- names(inner_dims_across_files)  #TODO: more than one?
+  across_inner_dim <- inner_dims_across_files[[1]]  #TODO: more than one?
   # Get the length of these two dimensions in final_dims
   length_inner_across_store_dims <- final_dims[across_inner_dim]
   length_file_across_store_dims <- final_dims[across_file_dim]
@@ -1042,37 +1092,74 @@ remove_additional_na_from_merge <- function(inner_dims_across_files, final_dims,
   for (i in 1:length_file_across_store_dims) {  #1:4
     logi_array[1:length_inner_across_dim[[i]], i] <- TRUE
   }
-  
-  # First, get the data array with final_dims dimension
-  data_array_final_dims <- array(bigmemory::as.matrix(data_array), dim = final_dims)
-       
+ 
+  if (!is.null(data_array)) {
+    # First, turn the data vector into array with final_dims
+    data_array_final_dims <- array(data_array, dim = final_dims)
+  }
+
   # Change the NA derived from additional spaces to -9999, then remove these -9999
   func_remove_blank <- function(data_array, logi_array) {
     # dim(data_array) = [time, file_date]
     # dim(logi_array) = [time, file_date]
-    # Change the blank spaces from NA to -9999
-    data_array[which(!logi_array)] <- -9999
+    # data_array can be data or metadata; if data, change the blank spaces from 
+    # NA to -9999; if metadata (supposed to be 'time'), change the corresponding
+    # spaces to -12^10.
+    if (is(data_array, "POSIXct")) {
+      # change to numeric first
+      data_array <- array(as.vector(data_array), dim = dim(data_array))
+      data_array[which(!logi_array)] <- -12^10
+    } else {
+      data_array[which(!logi_array)] <- -9999
+    }
     return(data_array)
   }
-  data_array_final_dims <- multiApply::Apply(data_array_final_dims,
-                                             target_dims = c(across_inner_dim, across_file_dim),  #c('time', 'file_date')
-                                             output_dims = c(across_inner_dim, across_file_dim),
-                                             fun = func_remove_blank,
-                                             logi_array = logi_array)$output1
-  ## reorder back to the correct dim
-  tmp <- match(names(final_dims), names(dim(data_array_final_dims)))
-  data_array_final_dims <- .aperm2(data_array_final_dims, tmp)
-  data_array_tmp <- data_array_final_dims[data_array_final_dims != -9999]  # become a vector
 
-  return(data_array_tmp)
+  if (!is.null(data_array)) {
+    data_array_final_dims <- multiApply::Apply(data_array_final_dims,
+                                               target_dims = c(across_inner_dim, across_file_dim),  #c('time', 'file_date')
+                                               output_dims = c(across_inner_dim, across_file_dim),
+                                               fun = func_remove_blank,
+                                               logi_array = logi_array)$output1
+  }
+  if (!is.null(merge_dim_metadata)) {
+    tmp_attr <- attributes(merge_dim_metadata)$variables
+    merge_dim_metadata <- multiApply::Apply(merge_dim_metadata,
+                            target_dims = c(across_inner_dim, across_file_dim),
+                            output_dims = c(across_inner_dim, across_file_dim),
+                            fun = func_remove_blank,
+                            logi_array = logi_array)$output1
+  }
+
+  if (!is.null(data_array)) {
+    ## reorder back to the correct dim
+    tmp <- match(names(final_dims), names(dim(data_array_final_dims)))
+    data_array_final_dims <- .aperm2(data_array_final_dims, tmp)
+    data_array_tmp <- data_array_final_dims[data_array_final_dims != -9999]  # become a vector
+  } else {
+    data_array_tmp <- NULL
+  }
+  if (!is.null(merge_dim_metadata)) {
+    # Reorder metadata dim as final dim
+    tmp <- match(names(final_dims), names(dim(merge_dim_metadata)))
+    merge_dim_metadata <- aperm(merge_dim_metadata, tmp[!is.na(tmp)])
+    merge_dim_metadata <- merge_dim_metadata[merge_dim_metadata != -12^10]
+    attr(merge_dim_metadata, 'variables') <- tmp_attr
+  }
+
+  #NOTE: both outputs are vectors. If 'merge_dim_metadata' is actually time, it is just numeric here.
+  return(list(data_array = data_array_tmp, merge_dim_metadata = merge_dim_metadata))
 }
-
 
 
 # When merge_across_dims = TRUE and split_multiselected_dims = TRUE, rearrange the chunks 
 # (i.e., work_piece) is necessary if one file contains values for discrete dimensions
-rebuild_array_merge_split <- function(data_array_tmp, indices_chunk, all_split_dims, 
-                                      final_dims_fake, across_inner_dim, length_inner_across_dim) {
+rebuild_array_merge_split <- function(data_array = NULL, metadata = NULL, indices_chunk,
+                                      all_split_dims, final_dims_fake, across_inner_dim, length_inner_across_dim) {
+
+  rebuild_data <- ifelse(is.null(data_array), FALSE, TRUE)
+  rebuild_metadata <- ifelse(is.null(metadata), FALSE, TRUE)
+
   # generate the correct order list from indices_chunk 
   final_order_list <- list()
   i <- 1
@@ -1103,43 +1190,101 @@ rebuild_array_merge_split <- function(data_array_tmp, indices_chunk, all_split_d
     if (split_dims_pos[length(split_dims_pos)] < length(final_dims_fake)) {
       new_dims <- c(new_dims, final_dims_fake[(split_dims_pos[length(split_dims_pos)] + 1):length(final_dims_fake)])
     }
-    data_array_no_split <- array(data_array_tmp, dim = new_dims)
-    # seperate 'time' dim into each work_piece length
-    data_array_seperate <- list()
+
+    if (rebuild_data) {
+      data_array <- array(data_array, dim = new_dims)
+      # seperate 'time' dim into each work_piece length
+      data_array_seperate <- vector('list', length = length(length_inner_across_dim))
+      array_piece <- vector('list', length = length(final_order_list))
+    }
+    if (rebuild_metadata) {
+      metadata <- array(metadata, dim = length(metadata)) #metadata_no_split
+      names(dim(metadata)) <- across_inner_dim
+      metadata_seperate <- vector('list', length = length(length_inner_across_dim))
+      metadata_piece <- vector('list', length = length(final_order_list))
+    }
+
     tmp <- cumsum(unlist(length_inner_across_dim))
     tmp <- c(0, tmp)
     for (i in 1:length(length_inner_across_dim)) {
-      data_array_seperate[[i]] <- ClimProjDiags::Subset(data_array_no_split, 
+      if (rebuild_data) {
+        data_array_seperate[[i]] <- ClimProjDiags::Subset(data_array,
+                                                          across_inner_dim,
+                                                          (tmp[i] + 1):tmp[i + 1])
+      }
+      if (rebuild_metadata) {
+        metadata_seperate[[i]] <- ClimProjDiags::Subset(metadata,
                                                         across_inner_dim,
                                                         (tmp[i] + 1):tmp[i + 1])
+      }
     }
+
     # re-build the array: chunk 
     which_chunk <- as.numeric(names(final_order_list))
     sort_which_chunk <- sort(unique(which_chunk))
     which_chunk <- sapply(lapply(which_chunk, '==', sort_which_chunk), which)
-
     how_many_indices <- unlist(final_order_list)
-    array_piece <- list()
-    ind_in_array_seperate <- as.list(rep(1, length(data_array_seperate)))
+
+    if (rebuild_data) {
+      ind_in_array_seperate <- as.list(rep(1, length(data_array_seperate)))
+    } else if (rebuild_metadata) {
+      ind_in_array_seperate <- as.list(rep(1, length(metadata_seperate)))
+    }
+
     for (i in 1:length(final_order_list)) {
-      array_piece[[i]] <- ClimProjDiags::Subset(
-                            data_array_seperate[[which_chunk[i]]], across_inner_dim,
-                            ind_in_array_seperate[[which_chunk[i]]]:(ind_in_array_seperate[[which_chunk[i]]] + how_many_indices[i] - 1))
+      if (rebuild_data) {
+        array_piece[[i]] <- ClimProjDiags::Subset(
+                              data_array_seperate[[which_chunk[i]]], across_inner_dim,
+                              ind_in_array_seperate[[which_chunk[i]]]:(ind_in_array_seperate[[which_chunk[i]]] + how_many_indices[i] - 1))
+      }
+      if (rebuild_metadata) {
+        metadata_piece[[i]] <- ClimProjDiags::Subset(
+                                 metadata_seperate[[which_chunk[i]]], across_inner_dim,
+                                 ind_in_array_seperate[[which_chunk[i]]]:(ind_in_array_seperate[[which_chunk[i]]] + how_many_indices[i] - 1))
+      }
       ind_in_array_seperate[[which_chunk[i]]] <- ind_in_array_seperate[[which_chunk[i]]] + how_many_indices[i]
     }
-   
+
     # re-build the array: paste
-    data_array_tmp <- array_piece[[1]]
-    along_pos <- which(names(dim(data_array_tmp)) == across_inner_dim)
-    if (length(array_piece) > 1) {
-      for (i in 2:length(array_piece)) {
-        data_array_tmp <- abind::abind(data_array_tmp, array_piece[[i]],
-                                       along = along_pos)
+    if (rebuild_data) {
+      data_array_tmp <- array_piece[[1]]
+    } else {
+      data_array_tmp <- NULL
+    }
+    if (rebuild_metadata) {
+      metadata_tmp <- metadata_piece[[1]]
+    } else {
+      metadata_tmp <- NULL
+    }
+
+    if (rebuild_data) {
+      along_pos <- which(names(dim(data_array_tmp)) == across_inner_dim)
+      length_piece <- length(array_piece)
+    } 
+    if (rebuild_metadata) {
+      along_pos_metadata <- which(names(dim(metadata_tmp)) == across_inner_dim)
+      if (!rebuild_data)
+        length_piece <- length(metadata_piece)
+    }
+
+    if (length_piece > 1) {
+      for (i in 2:length_piece) {
+        if (rebuild_data) {
+          data_array_tmp <- abind::abind(data_array_tmp, array_piece[[i]],
+                                         along = along_pos)
+        }
+        if (rebuild_metadata) {
+          metadata_tmp <- abind::abind(metadata_tmp, metadata_piece[[i]],
+                                       along = along_pos_metadata)
+        }
       }
     }
-  }    
-  
-  return(data_array_tmp)
+  } else {
+    data_array_tmp <- data_array
+    metadata_tmp <- metadata
+  }
+
+  return(list(data_array = data_array_tmp, metadata = metadata_tmp))
 }
 
 
@@ -1288,7 +1433,7 @@ generate_picked_var_of_read <- function(var_to_read, var_to_check, array_of_file
     if (any(names(array_var_dims) %in% names(var_file_dims))) {
       array_var_dims <- array_var_dims[-which(names(array_var_dims) %in% names(var_file_dims))]
     }
-    if (names(array_var_dims) != names(var_dims)) {
+    if (any(names(array_var_dims) != names(var_dims))) {
       stop("Error while reading the variable '", var_to_read, "' from ",
            "the file. Dimensions do not match.\nExpected ",
            paste(paste0("'", names(array_var_dims), "'"), collapse = ', '),
@@ -1316,8 +1461,11 @@ generate_picked_var_of_read <- function(var_to_read, var_to_check, array_of_file
         } else {
           padding <- array(dim = padding_dims)
         }
+        tmp_attr <- attributes(either_picked_vars)$variables
         either_picked_vars <- .abind2(either_picked_vars, padding,
                                       names(full_array_var_dims)[longer_dims_in_full_array])
+        attr(either_picked_vars, 'variables') <- tmp_attr
+
       } else {
         stop("Error while reading the variable '", var_to_read, "' from ",
              "the file. Found size (", paste(var_dims, collapse = ' x '),

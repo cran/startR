@@ -1,3 +1,20 @@
+# startR v2.2.1 (Release date: 2022-11-17)
+- Reduce warning messages from CDO.  
+- Reduce repetitive warning messages from CDORemapper() when single core is used. When multiple cores 
+are used, there are still repetitive messages.
+- Bugfix in Start() about ClimProjDiags::Subset inputs.
+- Bugfix when longitude selector range is very close but not global. The transform indices are correctly selected now.
+
+# startR v2.2.0-2 (Release date: 2022-08-25; internally)
+- Use the destination grid to decide which indices to take after interpolation.
+- Bugfix when Start() parameter "return_vars" is not used.
+- Allow netCDF files to not have calendar attributes (force it to be standard calendar)
+
+# startR v2.2.0-1 (Release date: 2022-04-19; internally)
+- Bugfix for the case that the variable has units like time, e.g., "days".  
+- Development of metadata reshaping. The metadata should correspond to data if data are reshaped by parameter "merge_across_dims" and "split_multiselected_dims", as well as if data selectors are not continuous indices.  
+- Development of multiple dependency by array selector. An inner dimension indices can vary with multiple file dimensions.  
+
 # startR v2.2.0 (Release date: 2022-02-11)  
 - License changes to Apache License 2.0  
 - R version dependency changes to >= 3.6.0  

@@ -802,6 +802,7 @@
 #'@importFrom utils str
 #'@importFrom stats na.omit setNames 
 #'@importFrom ClimProjDiags Subset
+#'@importFrom methods is
 #'@export
 Start <- function(..., # dim = indices/selectors, 
                   # dim_var = 'var', 
@@ -1220,7 +1221,7 @@ Start <- function(..., # dim = indices/selectors,
     dims_to_check <- debug
     debug <- TRUE
   }
-  
+ 
   ############################## READING FILE DIMS ############################
   # Check that no unrecognized variables are present in the path patterns
   # and also that no file dimensions are requested to THREDDs catalogs.
@@ -1384,7 +1385,7 @@ Start <- function(..., # dim = indices/selectors,
       # names as depended dim.
       for (j in 1:length(dat_selectors[[file_dim]])) {
         sv <- selector_vector <- dat_selectors[[file_dim]][[j]]
-        if (!identical(first_class, class(sv)) ||
+        if (!is(sv, first_class) ||
             !identical(first_length, length(sv))) {
           stop("All provided selectors for depending dimensions must ",
                "be vectors of the same length and of the same class.")
@@ -1408,7 +1409,7 @@ Start <- function(..., # dim = indices/selectors,
               # Chunk it only if it is defined dim (i.e., list of character with names of depended dim)
               if (!(length(dat_selectors[[depending_dim_name]]) == 1 &&
                     dat_selectors[[depending_dim_name]] %in% c('all', 'first', 'last'))) {
-                if (sapply(dat_selectors[[depending_dim_name]], is.character)) {
+                if (any(sapply(dat_selectors[[depending_dim_name]], is.character))) {
                   dat_selectors[[depending_dim_name]] <-
                     dat_selectors[[depending_dim_name]][desired_chunk_indices]
                 }
@@ -1731,7 +1732,11 @@ Start <- function(..., # dim = indices/selectors,
 #////////////////////////////////////////////
   # Force return_vars = (time = NULL) to (time = 'sdate') if (1) selector = [sdate = 2, time = 4] or
   # (2) time_across = 'sdate'.
-  # NOTE: Here is not in for loop of dat[[i]]
+  # NOTE: Not sure if the loop over dat is needed here. In theory, all the dat
+  #       should have the same dimensions (?) so expected_inner_dims and
+  #       found_file_dims are the same. The selector_array may possible be
+  #       different, but then the attribute will be correct? If it's different,
+  #       it should depend on 'dat' (but here we only consider common_return_vars)
   for (i in 1:length(dat)) {
     for (inner_dim in expected_inner_dims[[i]]) {
       # The selectors for the inner dimension are taken.
@@ -1745,11 +1750,29 @@ Start <- function(..., # dim = indices/selectors,
       if (inner_dim %in% inner_dims_across_files | 
           is.character(file_dim_as_selector_array_dim)) {  #(2) or (1)
         # inner_dim is not in return_vars or is NULL
-        if (((!inner_dim %in% names(common_return_vars)) & (!inner_dim %in% names(return_vars))) |
-            (inner_dim %in% names(common_return_vars) & is.null(common_return_vars[[inner_dim]]))) {
-          common_return_vars[[inner_dim]] <- correct_return_vars(
-                                               inner_dim, inner_dims_across_files, 
-                                               found_pattern_dim, file_dim_as_selector_array_dim)
+        need_correct <- FALSE
+        if (((!inner_dim %in% names(common_return_vars)) &
+             (!inner_dim %in% names(return_vars))) |
+            (inner_dim %in% names(common_return_vars) & 
+             is.null(common_return_vars[[inner_dim]]))) {
+          need_correct <- TRUE
+        } else if (inner_dim %in% names(common_return_vars) &
+                   (inner_dim %in% inner_dims_across_files) &
+                   !is.null(names(inner_dims_across_files))) { #(2)
+          if (!names(inner_dims_across_files) %in% common_return_vars[[inner_dim]]) need_correct <- TRUE
+          
+        } else if (inner_dim %in% names(common_return_vars) &
+                   is.character(file_dim_as_selector_array_dim)) { #(1)
+          if (!all(file_dim_as_selector_array_dim %in% common_return_vars[[inner_dim]])) {
+            need_correct <- TRUE
+            file_dim_as_selector_array_dim <- file_dim_as_selector_array_dim[which(!file_dim_as_selector_array_dim %in% common_return_vars[[inner_dim]])]
+          }
+        }
+        if (need_correct) {
+          common_return_vars[[inner_dim]] <-
+            c(common_return_vars[[inner_dim]],
+              correct_return_vars(inner_dim, inner_dims_across_files,
+                                  found_pattern_dim, file_dim_as_selector_array_dim))
         }
       }
     }
@@ -1924,6 +1947,10 @@ Start <- function(..., # dim = indices/selectors,
   transformed_common_vars_unorder_indices <- NULL
   transform_crop_domain <- NULL
 
+  # store warning messages from transform 
+  warnings1 <- NULL
+  warnings2 <- NULL
+
   for (i in 1:length(dat)) {
     if (dataset_has_files[i]) {
       indices <- indices_of_first_files_with_data[[i]]
@@ -2078,11 +2105,16 @@ Start <- function(..., # dim = indices/selectors,
           }
 
           # Transform the variables
-          transformed_data <- do.call(transform, c(list(data_array = NULL,
-                                                        variables = vars_to_transform,
-                                                        file_selectors = selectors_of_first_files_with_data[[i]],
-                                                        crop_domain = transform_crop_domain),
-                                                   transform_params))
+          tmp <- .withWarnings(
+            do.call(transform, c(list(data_array = NULL,
+                                      variables = vars_to_transform,
+                                      file_selectors = selectors_of_first_files_with_data[[i]],
+                                      crop_domain = transform_crop_domain),
+                                      transform_params))
+          )
+          transformed_data <- tmp$value
+          warnings1 <- c(warnings1, tmp$warnings)
+
           # Discard the common transformed variables if already transformed before
           if (!is.null(transformed_common_vars)) {
             common_ones <- which(names(picked_common_vars) %in% names(transformed_data$variables))
@@ -2156,11 +2188,27 @@ Start <- function(..., # dim = indices/selectors,
             print("-> DEFINING INDICES FOR INNER DIMENSION:")
             print(inner_dim)
           }
-          file_dim <- NULL
+          crossed_file_dim <- NULL
           if (inner_dim %in% unlist(inner_dims_across_files)) {
-            file_dim <- names(inner_dims_across_files)[which(sapply(inner_dims_across_files, function(x) inner_dim %in% x))[1]]
-            chunk_amount <- length(dat[[i]][['selectors']][[file_dim]][[1]])
-            names(chunk_amount) <- file_dim
+            crossed_file_dim <- names(inner_dims_across_files)[which(sapply(inner_dims_across_files, function(x) inner_dim %in% x))[1]]
+            chunk_amount <- length(dat[[i]][['selectors']][[crossed_file_dim]][[1]])
+            names(chunk_amount) <- crossed_file_dim
+          } else if (!is.null(names(dim(dat[[i]][['selectors']][[inner_dim]][[1]]))) &
+                     inner_dim %in% names(dim(dat[[i]][['selectors']][[inner_dim]][[1]])) &
+                     any(found_file_dims[[i]] %in% names(dim(dat[[i]][['selectors']][[inner_dim]][[1]])))) {
+            # inner dim is dependent on file dim in the form of selector array (e.g., time = [sdate = 2, time = 4])
+            crossed_file_dim <- found_file_dims[[i]][which(found_file_dims[[i]] %in% 
+                                                           names(dim(dat[[i]][['selectors']][[inner_dim]][[1]])))]
+            if (length(crossed_file_dim) == 1) {
+              chunk_amount <- length(dat[[i]][['selectors']][[crossed_file_dim]][[1]])
+              names(chunk_amount) <- crossed_file_dim
+            } else {
+            # e.g., region = [memb = 2, sdate = 3, region = 1]
+              chunk_amount <- prod(
+                                sapply(lapply(
+                                  dat[[i]][['selectors']][crossed_file_dim], "[[", 1), length))
+              names(chunk_amount) <- paste(crossed_file_dim, collapse = '.')
+            }
           } else {
             chunk_amount <- 1
           }
@@ -2210,7 +2258,7 @@ Start <- function(..., # dim = indices/selectors,
           selector_file_dims <- 1
 
           #NOTE: Change 'selector_file_dims' (from 1) if selector is an array with a file_dim dimname.
-          #      I.e., If time = [sdate = 2, time = 4], selector_file_dims <- array(sdate = 2)
+          #      I.e., If time = [sdate = 2, time = 4], selector_file_dims <- c(sdate = 2)
           if (any(found_file_dims[[i]] %in% names(dim(selector_array)))) {
             selector_file_dims <- dim(selector_array)[which(names(dim(selector_array)) %in% found_file_dims[[i]])]
           }
@@ -2226,7 +2274,7 @@ Start <- function(..., # dim = indices/selectors,
           if (!is.null(var_with_selectors_name)) {
             if ((var_with_selectors_name %in% transform_vars) && (!is.null(transform))) {
               with_transform <- TRUE
-              if (!is.null(file_dim)) {
+              if (!is.null(crossed_file_dim)) {
                 stop("Requested a transformation over the dimension '", 
                      inner_dim, "', wich goes across files. This feature ", 
                      "is not supported. Either do the request without the ",
@@ -2366,7 +2414,7 @@ Start <- function(..., # dim = indices/selectors,
               #TODO: if (chunk_amount != number of chunks in selector_file_dims), crash
               if (length(var_dims) > 1) {
                 stop("Specified a '", inner_dim, "_var' for the dimension '", 
-                     inner_dim, "', which goes across files (across '", file_dim, 
+                     inner_dim, "', which goes across files (across '", crossed_file_dim, 
                      "'). The specified variable, '", var_with_selectors_name, "', has more ",
                      "than one dimension and can not be used as selector variable. ",
                      "Select another variable or fix it in the files.")
@@ -2400,7 +2448,7 @@ Start <- function(..., # dim = indices/selectors,
           # need to know each length to create the indices for each file later.
           # Record 'inner_dim_lengths' here for later usage.
           inner_dim_lengths <- NULL
-          if (largest_dims_length & !is.null(file_dim)) {
+          if (largest_dims_length & !is.null(crossed_file_dim)) {
             # inner_dim_lengths here includes all the files, but we only want
             # the files of fyear for certain "sdate". We will categorize it later.
             inner_dim_lengths <- tryCatch({
@@ -2411,11 +2459,11 @@ Start <- function(..., # dim = indices/selectors,
             })
 
             # Use other file dims as the factors to categorize.
-            other_file_dims <- dim(array_of_files_to_load)[which(file_dims != file_dim)]
+            other_file_dims <- dim(array_of_files_to_load)[which(!found_file_dims[[i]] %in% crossed_file_dim)]
             other_file_dims <- lapply(lapply(other_file_dims, seq, 1), rev)
             other_file_dims_factor <- expand.grid(other_file_dims)
             selector_indices_save_subset <-
-              lapply(selector_indices_save[[i]], '[', which(file_dims != file_dim))
+              lapply(selector_indices_save[[i]], '[', which(!found_file_dims[[i]] %in% crossed_file_dim))
 
             # Put the fyear with the same other file dims (sdate, etc.) together, and find the largest length (in theory all of them should be the same)
             inner_dim_lengths_cat <- vector('list', dim(other_file_dims_factor)[1])
@@ -2466,9 +2514,9 @@ Start <- function(..., # dim = indices/selectors,
                 #sri <- NULL
               }
             } else {
-              if ((!is.null(file_dim)) && !(file_dim %in% names(var_file_dims))) {
+              if (!is.null(crossed_file_dim) & any(!(crossed_file_dim %in% names(var_file_dims)))) {
                 stop("The variable '", var_with_selectors_name, "' must also be ",
-                     "requested for the file dimension '", file_dim, "' in ",
+                     "requested for the file dimension '", crossed_file_dim, "' in ",
                      "this configuration.")
               }
               fri <- vector('list', length = prod(var_file_dims))
@@ -2563,12 +2611,12 @@ Start <- function(..., # dim = indices/selectors,
               unmatching_file_dims <- which(!(names(var_file_dims) %in% names(selector_file_dims)))
               if ((length(unmatching_file_dims) > 0)) {
                 raise_error <- FALSE
-                if (is.null(file_dim)) {
+                if (is.null(crossed_file_dim)) {
                   raise_error <- TRUE
                 } else {
-                  if (!((length(unmatching_file_dims) == 1) && 
-                        (names(var_file_dims)[unmatching_file_dims] == file_dim) &&
-                        (inner_dim %in% names(selector_inner_dims)))) {
+                  if (!(length(unmatching_file_dims) == 1 & 
+                        names(var_file_dims)[unmatching_file_dims] %in% crossed_file_dim &
+                        inner_dim %in% names(selector_inner_dims))) {
                     raise_error <- TRUE
                   }
                 }
@@ -2583,31 +2631,34 @@ Start <- function(..., # dim = indices/selectors,
               }
               if (any(names(selector_file_dims) %in% names(dim(var_with_selectors)))) {
                 if (any(dim(var_with_selectors)[names(selector_file_dims)] != selector_file_dims)) {
-                  stop("Size of selector file dimensions must mach size of requested ",
+                  stop("Size of selector file dimensions must match size of the corresponding ",
                        "variable dimensions.")
                 }
               }
             }
             ## TODO: If var dimensions are not in the same order as selector dimensions, reorder
             if (is.null(names(selector_file_dims))) {
-              if (is.null(file_dim)) {
+              if (is.null(crossed_file_dim)) {
                 fri_dims <- 1
               } else {
                 fri_dims <- chunk_amount
-                names(fri_dims) <- file_dim
+                names(fri_dims) <- crossed_file_dim
               }
             } else {
               fri_dim_names <- names(selector_file_dims)
-              if (!is.null(file_dim)) {
-                fri_dim_names <- c(fri_dim_names, file_dim)
+              if (!is.null(crossed_file_dim)) {
+                fri_dim_names <- c(fri_dim_names, crossed_file_dim)
               }
               fri_dim_names <- found_file_dims[[i]][which(found_file_dims[[i]] %in% fri_dim_names)]
               fri_dims <- rep(NA, length(fri_dim_names))
               names(fri_dims) <- fri_dim_names
               fri_dims[names(selector_file_dims)] <- selector_file_dims
-              if (!is.null(file_dim)) {
-                fri_dims[file_dim] <- chunk_amount
-              }
+              #NOTE: Not sure how it works here, but "chunk_amount" is the same as
+              #      "selector_file_dims" above in the cases we've seen so far, 
+              #      and it causes problem when crossed_file_dim is more than one.
+#              if (!is.null(crossed_file_dim)) {
+#                fri_dims[crossed_file_dim] <- chunk_amount
+#              }
             }
             fri <- vector('list', length = prod(fri_dims))
             dim(fri) <- fri_dims
@@ -2619,8 +2670,14 @@ Start <- function(..., # dim = indices/selectors,
               selector_indices_to_take <- which(selector_file_dim_array == j, arr.ind = TRUE)[1, ]
               names(selector_indices_to_take) <- names(selector_file_dims)
               selector_store_position[names(selector_indices_to_take)] <- selector_indices_to_take
-              sub_array_of_selectors <- Subset(selector_array, names(selector_indices_to_take),
-                                               as.list(selector_indices_to_take), drop = 'selected')
+              # "selector_indices_to_take" is an array if "selector_file_dims" is not 1 (if 
+              # selector is an array with a file_dim dimname, i.e., time = [sdate = 2, time = 4].
+              if (!is.null(names(selector_indices_to_take))) {
+                sub_array_of_selectors <- Subset(selector_array, names(selector_indices_to_take),
+                                                 as.list(selector_indices_to_take), drop = 'selected')
+              } else {
+                sub_array_of_selectors <- selector_array
+              }
 
               if (debug) {
                 if (inner_dim %in% dims_to_check) {
@@ -2639,8 +2696,14 @@ Start <- function(..., # dim = indices/selectors,
               } else {
                 if (length(names(var_file_dims)) > 0) {
                   var_indices_to_take <- selector_indices_to_take[which(names(selector_indices_to_take) %in% names(var_file_dims))]
-                  sub_array_of_values <- Subset(var_with_selectors, names(var_indices_to_take),
-                                                as.list(var_indices_to_take), drop = 'selected')
+                  if (!is.null(names(var_indices_to_take))) {
+                    sub_array_of_values <- Subset(var_with_selectors, names(var_indices_to_take),
+                                                  as.list(var_indices_to_take), drop = 'selected')
+                  } else {
+                    # time across some file dim (e.g., "file_date") but doesn't have 
+                    # this file dim as dimension (e.g., time: [sdate, time])
+                    sub_array_of_values <- var_with_selectors
+                  }
                 } else {
                   sub_array_of_values <- var_with_selectors
                 }
@@ -2651,13 +2714,13 @@ Start <- function(..., # dim = indices/selectors,
                   print(str(sub_array_of_values))
                   print(dim(sub_array_of_values))
                   print("-> NAME OF THE FILE DIMENSION THE CURRENT INNER DIMENSION EXTENDS ALONG:")
-                  print(file_dim)
+                  print(crossed_file_dim)
                 }
               }
 
               # The inner dim selector is an array in which have file dim (e.g., time = [sdate = 2, time = 4],
               # or the inner dim doesn't go across any file dim (e.g., no time_across = 'sdate')
-              if ((!is.null(file_dim) && (file_dim %in% names(selector_file_dims))) || is.null(file_dim)) {
+              if ((!is.null(crossed_file_dim) & (any(crossed_file_dim %in% names(selector_file_dims)))) || is.null(crossed_file_dim)) {
                 if (length(sub_array_of_selectors) > 0) {
                   if (debug) {
                     if (inner_dim %in% dims_to_check) {
@@ -2925,12 +2988,16 @@ Start <- function(..., # dim = indices/selectors,
                                inner_dim, sub_array_of_fri)
                       }
                     }
-                   
-                    transformed_subset_var <- do.call(transform, c(list(data_array = NULL,
-                                                                        variables = subset_vars_to_transform,
-                                                                        file_selectors = selectors_of_first_files_with_data[[i]],
-                                                                        crop_domain = transform_crop_domain),
-                                                                   transform_params))$variables[[var_with_selectors_name]]
+                    tmp <- .withWarnings(
+                      do.call(transform, c(list(data_array = NULL,
+                                                variables = subset_vars_to_transform,
+                                                file_selectors = selectors_of_first_files_with_data[[i]],
+                                                crop_domain = transform_crop_domain),
+                                          transform_params))$variables[[var_with_selectors_name]]
+                    )
+                    transformed_subset_var <- tmp$value
+                    warnings2 <- c(warnings2, tmp$warnings)
+                    
                     # Sorting the transformed variable and working out the indices again after transform.
                     if (!is.null(dim_reorder_params[[inner_dim]])) {
                       transformed_subset_var_reorder <- dim_reorder_params[[inner_dim]](transformed_subset_var)
@@ -3004,97 +3071,18 @@ Start <- function(..., # dim = indices/selectors,
                       sub_array_of_sri <- sub_array_of_sri[[1]]:sub_array_of_sri[[2]]
                     }
 
-                    # Chunk sub_array_of_sri if this inner_dim needs to be chunked
-                    #TODO: Potential problem: the transformed_subset_var value falls between
-                    #      the end of sub_sub_array_of_values of the 1st chunk and the beginning
-                    #      of sub_sub_array_of_values of the 2nd chunk. Then, one sub_array_of_sri
-                    #      will miss. 'previous_sri' is checked and will be included if this
-                    #      situation happens, but don't know if the transformed result is 
-                    #      correct or not.
-                    # NOTE: The chunking criteria may not be 100% correct. The current way
-                    #       is to pick the sri that larger than the minimal sub_sub_array_of_values
-                    #       and smaller than the maximal sub_sub_array_of_values; if it's 
-                    #       the first chunk, make sure the 1st sri is included; if it's the
-                    #       last chunk, make sure the last sri is included.
+#========================================================
+
+# Instead of using values to find sri, directly use the destination grid to count.
+#NOTE: sub_array_of_sri seems to start at 1 always (because crop = c(lonmin, lonmax, latmin, latmax) already?)
                     if (chunks[[inner_dim]]["n_chunks"] > 1) {
-                      sub_array_of_sri_complete <- sub_array_of_sri
-                      if (is.list(sub_sub_array_of_values)) {  # list
-                        sub_array_of_sri <-
-                          which(transformed_subset_var >= min(unlist(sub_sub_array_of_values)) &
-                                transformed_subset_var <= max(unlist(sub_sub_array_of_values)))
-                        # if it's 1st chunk & the first sri is not included, include it.
-                        if (chunks[[inner_dim]]["chunk"] == 1 &
-                            !(sub_array_of_sri_complete[1] %in% sub_array_of_sri)) {
-                          sub_array_of_sri <- c(sub_array_of_sri_complete[1], sub_array_of_sri)
-                        }
-                        # if it's last chunk & the last sri is not included, include it.
-                        if (chunks[[inner_dim]]["chunk"] == chunks[[inner_dim]]["n_chunks"] &
-                            !(tail(sub_array_of_sri_complete, 1) %in% sub_array_of_sri)) {
-                          sub_array_of_sri <- c(sub_array_of_sri, tail(sub_array_of_sri_complete, 1))
-                        }
-
-                        # Check if sub_array_of_sri perfectly connects to the previous sri.
-                        # If not, inlclude the previous sri. 
-                        #NOTE 1: don't know if the transform for the previous sri is 
-                        #        correct or not.
-                        #NOTE 2: If crop = T, sub_array_of_sri always starts from 1.
-                        #        Don't know if the cropping will miss some sri or not.
-                        if (sub_array_of_sri[1] != 1) {
-                          if (!is.null(previous_sub_sub_array_of_values)) {
-                            # if decreasing = F
-                            if (transformed_subset_var[1] < transformed_subset_var[2]) {
-                              previous_sri <- max(which(transformed_subset_var <= previous_sub_sub_array_of_values))
-                            } else {
-                            # if decreasing = T
-                              previous_sri <- max(which(transformed_subset_var >= previous_sub_sub_array_of_values))
-                            }
-                            if (previous_sri + 1 != sub_array_of_sri[1]) {
-                              sub_array_of_sri <- (previous_sri + 1):sub_array_of_sri[length(sub_array_of_sri)]
-                            }
-                          }
-                        }
-
-                      } else {  # is vector
-                        tmp <- which(transformed_subset_var >= min(sub_sub_array_of_values) &
-                                     transformed_subset_var <= max(sub_sub_array_of_values))
-                        # Ensure tmp and sub_array_of_sri are both ascending or descending
-                        if (is.unsorted(tmp) != is.unsorted(sub_array_of_sri)) {
-                          tmp <- rev(tmp)
-                        }
-                        # Include first or last sri if tmp doesn't have. It's only for
-                        # ""vectors"" because vectors look for the closest value.
-                        #NOTE: The condition here is not correct. The criteria should be
-                        #      'vector' instead of indices.
-                        if (chunks[[inner_dim]]["chunk"] == 1) {
-                          sub_array_of_sri <- unique(c(sub_array_of_sri[1], tmp))
-                        } else if (chunks[[inner_dim]]["chunk"] ==
-                                   chunks[[inner_dim]]["n_chunks"]) {  # last chunk
-                          sub_array_of_sri <- unique(c(tmp, sub_array_of_sri[length(sub_array_of_sri)]))
-                        } else {
-                          sub_array_of_sri <- tmp
-                        }
-                        # Check if sub_array_of_sri perfectly connects to the previous sri.
-                        # If not, inlclude the previous sri. 
-                        #NOTE 1: don't know if the transform for the previous sri is 
-                        #        correct or not.
-                        #NOTE 2: If crop = T, sub_array_of_sri always starts from 1.
-                        #        Don't know if the cropping will miss some sri or not.
-                        if (sub_array_of_sri[1] != 1) {
-                          if (!is.null(previous_sub_sub_array_of_values)) {
-                            # if decreasing = F
-                            if (transformed_subset_var[1] < transformed_subset_var[2]) {
-                              previous_sri <- max(which(transformed_subset_var <= previous_sub_sub_array_of_values))
-                            } else {
-                            # if decreasing = T
-                              previous_sri <- max(which(transformed_subset_var >= previous_sub_sub_array_of_values))
-                            }
-                            if (previous_sri + 1 != which(sub_array_of_sri[1] == sub_array_of_sri_complete)) {
-                              sub_array_of_sri <- (previous_sri + 1):sub_array_of_sri[length(sub_array_of_sri)]
-                            }
-                          }
-                        }
-                      }
+                      sub_array_of_sri <- sub_array_of_sri[get_chunk_indices(
+                        length(sub_array_of_sri),
+                        chunks[[inner_dim]]["chunk"],
+                        chunks[[inner_dim]]["n_chunks"],
+                        inner_dim)]
                     }
+#========================================================
 
                     ordered_sri <- sub_array_of_sri
                     sub_array_of_sri <- transformed_subset_var_unorder[sub_array_of_sri]
@@ -3173,11 +3161,15 @@ Start <- function(..., # dim = indices/selectors,
                   }
                   fri <- do.call('[[<-', c(list(x = fri), as.list(selector_store_position),
                                            list(value = sub_array_of_fri)))
-                  if (!is.null(file_dim)) {
-                    taken_chunks[selector_store_position[[file_dim]]] <- TRUE
-                  } else {
-                    taken_chunks <- TRUE
-                  }
+
+                  #NOTE: This part existed always but never was used. taken_chunks
+                  #      is related to merge_across_dims, but I don't know how it is
+                  #      used (maybe for higher efficiency?)
+#                  if (!is.null(crossed_file_dim)) {
+#                    taken_chunks[selector_store_position[[crossed_file_dim]]] <- TRUE
+#                  } else {
+                  taken_chunks <- TRUE
+#                  }
                 }
               } else {
               # The inner dim goes across a file dim (e.g., time_across = 'sdate')
@@ -3186,7 +3178,7 @@ Start <- function(..., # dim = indices/selectors,
                     print("-> THE INNER DIMENSION GOES ACROSS A FILE DIMENSION.")
                   }
                 }
-                # If "<inner_dim>_across = <file_dim> + merge_across_dims = FALSE + chunk over <inner_dim>", return error because this instance is not logically correct.
+                # If "<inner_dim>_across = <crossed_file_dim> + merge_across_dims = FALSE + chunk over <inner_dim>", return error because this instance is not logically correct.
                 if (chunks[[inner_dim]]["n_chunks"] > 1 & inner_dim %in% inner_dims_across_files) {
                   stop("Chunk over dimension '", inner_dim, "' is not allowed because '",
                        inner_dim, "' is across '",
@@ -3282,12 +3274,16 @@ Start <- function(..., # dim = indices/selectors,
 
                   for (chunk in 1:chunk_amount) {
                     if (!is.null(names(selector_store_position))) {
-                      selector_store_position[file_dim] <- chunk
+                      selector_store_position[crossed_file_dim] <- chunk
                     } else {
                       selector_store_position <- chunk
                     }
                     sub_array_of_indices <- transformed_indices[which(indices_chunk == chunk)]
-                    sub_array_of_indices <- transformed_indices[which(indices_chunk == chunk)]
+
+                    #NOTE: This 'with_transform' part is probably not tested because 
+                    #      here is for the inner dim that goes across a file dim, which
+                    #      is normally not lat and lon dimension. If in the future, we 
+                    #      can interpolate time, this part needs to be examined.
                     if (with_transform) {
                       # If the provided selectors are expressed in the world
                       # before transformation
@@ -3344,7 +3340,7 @@ Start <- function(..., # dim = indices/selectors,
                   }
                 } else {
                   stop("Provided array of indices for dimension '", inner_dim, "', ",
-                       "which goes across the file dimension '", file_dim, "', but ",
+                       "which goes across the file dimension '", crossed_file_dim, "', but ",
                        "the provided array does not have the dimension '", inner_dim, 
                        "', which is mandatory.")
                 }
@@ -3384,12 +3380,12 @@ Start <- function(..., # dim = indices/selectors,
             #                end_chunks_to_remove <- empty_chunks[first_chunk_to_remove:length(empty_chunks)]
             #                chunks_to_keep <- which(!((1:length(taken_chunks)) %in% c(start_chunks_to_remove, end_chunks_to_remove)))
             chunks_to_keep <- which(taken_chunks)
-            dims_to_crop[[file_dim]] <- c(dims_to_crop[[file_dim]], list(chunks_to_keep))
-            #                found_indices <- Subset(found_indices, file_dim, chunks_to_keep)
+            dims_to_crop[[crossed_file_dim]] <- c(dims_to_crop[[crossed_file_dim]], list(chunks_to_keep))
+            #                found_indices <- Subset(found_indices, crossed_file_dim, chunks_to_keep)
             #                # Crop dataset variables file dims.
             #                for (picked_var in names(picked_vars[[i]])) {
-            #                  if (file_dim %in% names(dim(picked_vars[[i]][[picked_var]]))) {
-            #                    picked_vars[[i]][[picked_var]] <- Subset(picked_vars[[i]][[picked_var]], file_dim, chunks_to_keep)
+            #                  if (crossed_file_dim %in% names(dim(picked_vars[[i]][[picked_var]]))) {
+            #                    picked_vars[[i]][[picked_var]] <- Subset(picked_vars[[i]][[picked_var]], crossed_file_dim, chunks_to_keep)
             #                  }
             #                }
           }
@@ -3462,8 +3458,61 @@ Start <- function(..., # dim = indices/selectors,
                       common_vars_to_crop[[common_var_to_crop]] <-
                         Subset(transformed_var_with_selectors, inner_dim, crop_indices)
                     }
-                  } else {  #old code
-                  common_vars_to_crop[[common_var_to_crop]] <- Subset(common_vars_to_crop[[common_var_to_crop]], inner_dim, crop_indices)
+                  } else {
+                    if (!is.null(crossed_file_dim)) {  #merge_across_dims, crossed_file_dim is the depended file dim
+                      #NOTE: When is not this case??? Maybe this condition is not needed
+                      if (any(crossed_file_dim %in% names(dim(common_vars_to_crop[[common_var_to_crop]])))) {
+                        tmp <- common_vars_to_crop[[common_var_to_crop]]
+                        tmp_attributes <- attributes(common_vars_to_crop[[common_var_to_crop]])
+                        dim_extra_ind <- which(!names(dim(tmp)) %in% c(crossed_file_dim, inner_dim))
+                        if (!identical(dim_extra_ind, integer(0))) {
+                          tmp_list <- asplit(tmp, dim_extra_ind)
+                          dim_file_ind <- which(names(dim(tmp_list[[1]])) %in% crossed_file_dim)
+                          tmp_list <- lapply(tmp_list, asplit, dim_file_ind)
+                        } else {  # only crossed_file_dim and inner_dim
+                          dim_file_ind <- which(names(dim(tmp)) %in% crossed_file_dim)
+                          tmp_list <- asplit(tmp, dim_file_ind)
+                          # Add another layer to be consistent with the first case above
+                          tmp_list <- list(tmp_list)
+                        }
+                        max_fri_length <- max(sapply(fri, length))
+                        for (i_extra_dim in 1:length(tmp_list)) {
+                          for (i_fri in 1:length(fri)) {
+                            tmp_list[[i_extra_dim]][[i_fri]] <-
+                              tmp_list[[i_extra_dim]][[i_fri]][fri[[i_fri]]]
+  
+                            if (length(tmp_list[[i_extra_dim]][[i_fri]]) != max_fri_length) {
+                              tmp_list[[i_extra_dim]][[i_fri]] <-
+                                c(tmp_list[[i_extra_dim]][[i_fri]], rep(NA, max_fri_length - length(tmp_list[[i_extra_dim]][[i_fri]])))
+                            }
+                          }
+                        }
+                        # Change list back to array
+                        tmp_new_dim <- c(max_fri_length, dim(tmp)[crossed_file_dim], dim(tmp)[dim_extra_ind])
+                        names(tmp_new_dim) <- c(inner_dim, crossed_file_dim, names(dim(tmp))[dim_extra_ind])
+                        common_vars_to_crop[[common_var_to_crop]] <-
+                          array(unlist(tmp_list), dim = tmp_new_dim)
+                        # Reorder back
+                        common_vars_to_crop[[common_var_to_crop]] <-
+                          aperm(common_vars_to_crop[[common_var_to_crop]], match(names(dim(tmp)), names(tmp_new_dim)))
+                        # Put attributes back
+                        tmp <- which(!names(tmp_attributes) %in% names(attributes(common_vars_to_crop[[common_var_to_crop]])))
+                        attributes(common_vars_to_crop[[common_var_to_crop]]) <- 
+                          c(attributes(common_vars_to_crop[[common_var_to_crop]]), 
+                            tmp_attributes[tmp])
+
+                        if ('time' %in% synonims[[common_var_to_crop]]) {
+                          # Convert number back to time
+                          common_vars_to_crop[[common_var_to_crop]] <-
+                            as.POSIXct(common_vars_to_crop[[common_var_to_crop]],
+                                       origin = "1970-01-01", tz = 'UTC')
+                        }
+                      }
+                    } else {  # old code
+
+                      common_vars_to_crop[[common_var_to_crop]] <- Subset(common_vars_to_crop[[common_var_to_crop]], inner_dim, crop_indices)
+                    }
+
                   }
 
                 }
@@ -3602,6 +3651,7 @@ Start <- function(..., # dim = indices/selectors,
   # Find the dimension to split if split_multiselected_dims = TRUE.
   # If there is no dimension able to be split, change split_multiselected_dims to FALSE.
   all_split_dims <- NULL
+  inner_dim_has_split_dim <- NULL
   if (split_multiselected_dims) {
     tmp <- dims_split(dim_params, final_dims_fake)
     final_dims_fake <- tmp[[1]]
@@ -3612,6 +3662,18 @@ Start <- function(..., # dim = indices/selectors,
      split_multiselected_dims <- FALSE
      .warning(paste0("Not found any dimensions able to be split. The parameter ",
                      "'split_multiselected_dims' is changed to FALSE."))
+   } else {
+    tmp_fun <- function (x, y) {
+      any(names(dim(x)) %in% y)
+    }
+    if (!is.null(picked_common_vars)) {
+      inner_dim_has_split_dim <- names(which(unlist(lapply(
+                                   picked_common_vars, tmp_fun, names(all_split_dims)))))
+      if (!identical(inner_dim_has_split_dim, character(0))) {
+        # If merge_across_dims also, it will be replaced later
+        saved_reshaped_attr <- attr(picked_common_vars[[inner_dim_has_split_dim]], 'variables')
+      }
+    }
    }
   }
   #======================================================================
@@ -3623,6 +3685,9 @@ Start <- function(..., # dim = indices/selectors,
     across_inner_dim <- inner_dims_across_files[[1]]  #TODO: more than one?
     # Get the length of each inner_dim ('time') along each file_dim ('file_date')  
     length_inner_across_dim <- lapply(dat[[i]][['selectors']][[across_inner_dim]][['fri']], length)
+    dims_of_merge_dim <- dim(picked_common_vars[[across_inner_dim]])
+    # Save attributes for later use. If split_multiselected_dims, this variable has been created above but is replaced here
+    saved_reshaped_attr <- attr(picked_common_vars[[across_inner_dim]], 'variables')
 
     if (merge_across_dims_narm & !split_multiselected_dims) {
       final_dims_fake <- merge_narm_dims(final_dims_fake, across_inner_dim, length_inner_across_dim)
@@ -3668,7 +3733,32 @@ Start <- function(..., # dim = indices/selectors,
       all_split_dims[[1]] <- tmp[[2]]
     }
   }
-  
+  if (merge_across_dims | split_multiselected_dims) {
+    if (!merge_across_dims & split_multiselected_dims & identical(inner_dim_has_split_dim, character(0))) {
+      final_dims_fake_metadata <- NULL
+    } else {
+      if (!merge_across_dims & split_multiselected_dims & !is.null(picked_common_vars)) {
+        if (any(names(all_split_dims[[1]]) %in% names(dim(picked_common_vars[[inner_dim_has_split_dim]]))) &
+            names(all_split_dims)[1] != inner_dim_has_split_dim) {
+          if (inner_dim_has_split_dim %in% names(final_dims)) {
+            stop("Detect inner dimension in the split array, but merge_across_dims is not used. The output dimensions will be repeated. Check if the dimensions and parameters are correctly defined.")
+          } else {
+            # Only split no merge, time dim is not explicitly defined because the 
+            # length is 1, the sdate dim to be split having 'time' as one dimension.
+            # --> Take 'time' dim off from picked_common_vars.
+            dim(picked_common_vars[[inner_dim_has_split_dim]]) <- dim(picked_common_vars[[inner_dim_has_split_dim]])[-which(names(dim(picked_common_vars[[inner_dim_has_split_dim]])) == inner_dim_has_split_dim)]
+          }
+        }
+      }
+      final_dims_fake_metadata <- find_final_dims_fake_metadata(
+        merge_across_dims, split_multiselected_dims, picked_common_vars = picked_common_vars[[inner_dim_has_split_dim]], across_inner_dim,
+        final_dims_fake, dims_of_merge_dim, all_split_dims)
+    }
+  }
+
+   # store warning messages from transform
+   warnings3 <- NULL
+
   # The following several lines will only run if retrieve = TRUE
   if (retrieve) {
     
@@ -3747,10 +3837,12 @@ Start <- function(..., # dim = indices/selectors,
     # the appropriate work pieces.
     work_pieces <- retrieve_progress_message(work_pieces, num_procs, silent)
 
+
     # NOTE: In .LoadDataFile(), metadata is saved in metadata_folder/1 or /2 etc. Before here,
     #       the path name is created in work_pieces but the path hasn't been built yet.
     if (num_procs == 1) {
-      found_files <- lapply(work_pieces, .LoadDataFile, 
+      tmp <- .withWarnings(
+        lapply(work_pieces, .LoadDataFile, 
                             shared_matrix_pointer = shared_matrix_pointer,
                             file_data_reader = file_data_reader, 
                             synonims = synonims,
@@ -3758,9 +3850,15 @@ Start <- function(..., # dim = indices/selectors,
                             transform_params = transform_params,
                             transform_crop_domain = transform_crop_domain,
                             silent = silent, debug = debug)
+      )
+      found_files <- tmp$value
+      warnings3 <- c(warnings3, tmp$warnings)
+      
     } else {
       cluster <- parallel::makeCluster(num_procs, outfile = "")
       # Send the heavy work to the workers
+      ##NOTE: .withWarnings() can't catch warnings like it does above (num_procs == 1). The warnings
+      ##      show below when "bigmemory::as.matrix(data_array)" is called. Don't know how to fix it for now.
       work_errors <- try({
         found_files <- parallel::clusterApplyLB(cluster, work_pieces, .LoadDataFile, 
                                                 shared_matrix_pointer = shared_matrix_pointer,
@@ -3781,48 +3879,103 @@ Start <- function(..., # dim = indices/selectors,
       }
     }
     #print("P")
-    
-    # NOTE: If merge_across_dims = TRUE, there might be additional NAs due to
-    #       unequal inner_dim ('time') length across file_dim ('file_date').
-    #       If merge_across_dims_narm = TRUE, add additional lines to remove these NAs.
+
+    # If merge_across_dims = TRUE, there might be additional NAs due to unequal
+    # inner_dim ('time') length across file_dim ('file_date').
+    # If merge_across_dims_narm = TRUE, add additional lines to remove these NAs.
     # TODO: Now it assumes that only one '_across'. Add a for loop for more-than-one case. 
     if (merge_across_dims & (split_multiselected_dims | merge_across_dims_narm)) {
       if (!merge_across_dims_narm) {
         data_array_tmp <- array(bigmemory::as.matrix(data_array), dim = final_dims)
+        tmp <- match(names(final_dims), names(dims_of_merge_dim))
+        if (any(diff(tmp[!is.na(tmp)]) < 0)) { #need to reorder
+          picked_common_vars[[across_inner_dim]] <- .aperm2(picked_common_vars[[across_inner_dim]], tmp[!is.na(tmp)])
+        }
+        metadata_tmp <- picked_common_vars[[across_inner_dim]]
       } else {
-        data_array_tmp <- remove_additional_na_from_merge(
-                            inner_dims_across_files, final_dims, across_inner_dim,
-                            length_inner_across_dim, data_array)
+        tmp <- remove_additional_na_from_merge(
+                 data_array = bigmemory::as.matrix(data_array),
+                 merge_dim_metadata = picked_common_vars[[across_inner_dim]],
+                 inner_dims_across_files, final_dims,
+                 length_inner_across_dim)
+        data_array_tmp <- tmp$data_array
+        metadata_tmp <- tmp$merge_dim_metadata
       }
 
       if (length(data_array_tmp) != prod(final_dims_fake)) {
         stop(paste0("After reshaping, the data do not fit into the expected output dimension. ",
                     "Check if the reshaping parameters are used correctly."))
       }
- 
+      if (length(metadata_tmp) != prod(final_dims_fake_metadata)) {
+        stop(paste0("After reshaping, the metadata do not fit into the expected output dimension. ",
+                    "Check if the reshaping parameters are used correctly or contact support."))
+      }
+
       #NOTE: When one file contains values for dicrete dimensions, rearrange the 
       #      chunks (i.e., work_piece) is necessary.
       if (split_multiselected_dims) {
-        data_array_tmp <- rebuild_array_merge_split(
-                            data_array_tmp, indices_chunk, all_split_dims, final_dims_fake, 
-                            across_inner_dim, length_inner_across_dim) 
+        tmp <- rebuild_array_merge_split(
+                 data_array = data_array_tmp, metadata = metadata_tmp, indices_chunk,
+                 all_split_dims, final_dims_fake, across_inner_dim, length_inner_across_dim)
+        data_array_tmp <- tmp$data_array
+        metadata_tmp <- tmp$metadata
       }
-  
+
       data_array <- array(data_array_tmp, dim = final_dims_fake)
-      
+      metadata_tmp <- array(metadata_tmp, dim = final_dims_fake_metadata)
+
+      # If split_multiselected_dims + merge_across_dims, the dimension order may change above.
+      # To get the user-required dim order, we need to reorder the array again.
+      if (split_multiselected_dims) {
+        if (inner_dim_pos_in_split_dims != 1) {
+          correct_order <- match(names(final_dims_fake_output), names(final_dims_fake))
+          data_array <- .aperm2(data_array, correct_order)
+          correct_order_metadata <- match(names(final_dims_fake_output), names(all_split_dims[[across_inner_dim]]))
+          metadata_tmp <- .aperm2(metadata_tmp, correct_order_metadata[!is.na(correct_order_metadata)])
+        }
+      }
+      # Convert numeric back to dates
+      if ('time' %in% synonims[[across_inner_dim]]) {
+        metadata_tmp <- as.POSIXct(metadata_tmp, origin = "1970-01-01", tz = 'UTC')
+      }
+
+      picked_common_vars[[across_inner_dim]] <- metadata_tmp
+      attr(picked_common_vars[[across_inner_dim]], 'variables') <- saved_reshaped_attr
+
     } else {  # ! (merge_across_dims + split_multiselected_dims) (old version)
       data_array <- array(bigmemory::as.matrix(data_array), dim = final_dims_fake)
-    }
-    
-    # NOTE: If split_multiselected_dims + merge_across_dims, the dimension order may change above.
-    #       To get the user-required dim order, we need to reorder the array again.
-    if (split_multiselected_dims & merge_across_dims) {
-      if (inner_dim_pos_in_split_dims != 1) {
-        correct_order <- match(names(final_dims_fake_output), names(final_dims_fake))
-        data_array <- .aperm2(data_array, correct_order)
+      if (merge_across_dims) {
+        # merge_across_dims = TRUE but (merge_across_dims_narm = F & split_multiselected_dims = F)
+
+        inner_dim_pos <- which(names(dims_of_merge_dim) == inner_dims_across_files)
+        file_dim_pos <- which(names(dims_of_merge_dim) == names(inner_dims_across_files))
+        if (file_dim_pos < inner_dim_pos) {  #need to reorder
+          tmp <- seq(1, length(dims_of_merge_dim))
+          tmp[inner_dim_pos] <- file_dim_pos
+          tmp[file_dim_pos] <- inner_dim_pos
+          picked_common_vars[[across_inner_dim]] <- .aperm2(picked_common_vars[[across_inner_dim]], tmp)
+        }
+        metadata_tmp <- array(picked_common_vars[[across_inner_dim]], dim = final_dims_fake_metadata)
+        # Convert numeric back to dates
+        if ('time' %in% synonims[[across_inner_dim]]) {
+          metadata_tmp <- as.POSIXct(metadata_tmp, origin = "1970-01-01", tz = 'UTC')
+        }
+        picked_common_vars[[across_inner_dim]] <- metadata_tmp
+        attr(picked_common_vars[[across_inner_dim]], 'variables') <- saved_reshaped_attr
+      }
+      if (split_multiselected_dims & !is.null(picked_common_vars)) {
+        if (!identical(inner_dim_has_split_dim, character(0))) {
+          metadata_tmp <- array(picked_common_vars[[inner_dim_has_split_dim]], dim = final_dims_fake_metadata)
+          # Convert numeric back to dates
+          if (is(picked_common_vars[[inner_dim_has_split_dim]], 'POSIXct')) {
+            metadata_tmp <- as.POSIXct(metadata_tmp, origin = "1970-01-01", tz = 'UTC')
+          }
+          picked_common_vars[[inner_dim_has_split_dim]] <- metadata_tmp
+          attr(picked_common_vars[[inner_dim_has_split_dim]], 'variables') <- saved_reshaped_attr
+        }
       }
     }
-    
+   
     gc()
     
     # Load metadata and remove the metadata folder
@@ -3870,7 +4023,100 @@ Start <- function(..., # dim = indices/selectors,
     }
     
   } # End if (retrieve)
-  
+  else { # if retrieve = FALSE, metadata still needs to reshape
+
+    if (merge_across_dims & (split_multiselected_dims | merge_across_dims_narm)) {
+      if (!merge_across_dims_narm) {
+        tmp <- match(names(final_dims), names(dims_of_merge_dim))
+        if (any(diff(tmp[!is.na(tmp)]) < 0)) { #need to reorder
+          picked_common_vars[[across_inner_dim]] <- .aperm2(picked_common_vars[[across_inner_dim]], tmp[!is.na(tmp)])
+        }
+        metadata_tmp <- picked_common_vars[[across_inner_dim]]
+      } else {
+        tmp <- remove_additional_na_from_merge(
+                 data_array = NULL,
+                 merge_dim_metadata = picked_common_vars[[across_inner_dim]],
+                 inner_dims_across_files, final_dims,
+                 length_inner_across_dim)
+        metadata_tmp <- tmp$merge_dim_metadata
+      }
+
+      if (length(metadata_tmp) != prod(final_dims_fake_metadata)) {
+        stop(paste0("After reshaping, the metadata do not fit into the expected output dimension. ",
+                    "Check if the reshaping parameters are used correctly or contact support."))
+      }
+
+      #NOTE: When one file contains values for dicrete dimensions, rearrange the 
+      #      chunks (i.e., work_piece) is necessary.
+      if (split_multiselected_dims) {
+        tmp <- rebuild_array_merge_split(
+                 data_array = NULL, metadata = metadata_tmp, indices_chunk,
+                 all_split_dims, final_dims_fake, across_inner_dim, length_inner_across_dim)
+        metadata_tmp <- tmp$metadata
+      }
+      metadata_tmp <- array(metadata_tmp, dim = final_dims_fake_metadata)
+
+      # If split_multiselected_dims + merge_across_dims, the dimension order may change above.
+      # To get the user-required dim order, we need to reorder the array again.
+      if (split_multiselected_dims) {
+        if (inner_dim_pos_in_split_dims != 1) {
+          correct_order <- match(names(final_dims_fake_output), names(final_dims_fake))
+#          data_array <- .aperm2(data_array, correct_order)
+          correct_order_metadata <- match(names(final_dims_fake_output), names(all_split_dims[[across_inner_dim]]))
+          metadata_tmp <- .aperm2(metadata_tmp, correct_order_metadata[!is.na(correct_order_metadata)])
+        }
+      }
+      # Convert numeric back to dates
+      if ('time' %in% synonims[[across_inner_dim]]) {
+        metadata_tmp <- as.POSIXct(metadata_tmp, origin = "1970-01-01", tz = 'UTC')
+      }
+      picked_common_vars[[across_inner_dim]] <- metadata_tmp
+      attr(picked_common_vars[[across_inner_dim]], 'variables') <- saved_reshaped_attr
+    } else {  # ! (merge_across_dims + split_multiselected_dims) (old version)
+      if (merge_across_dims) {
+        # merge_across_dims = TRUE but (merge_across_dims_narm = F & split_multiselected_dims = F)
+
+        inner_dim_pos <- which(names(dims_of_merge_dim) == inner_dims_across_files)
+        file_dim_pos <- which(names(dims_of_merge_dim) == names(inner_dims_across_files))
+        if (file_dim_pos < inner_dim_pos) {  #need to reorder
+          tmp <- seq(1, length(dims_of_merge_dim))
+          tmp[inner_dim_pos] <- file_dim_pos
+          tmp[file_dim_pos] <- inner_dim_pos
+          picked_common_vars[[across_inner_dim]] <- .aperm2(picked_common_vars[[across_inner_dim]], tmp)
+        }
+        metadata_tmp <- array(picked_common_vars[[across_inner_dim]], dim = final_dims_fake_metadata)
+        # Convert numeric back to dates
+        if ('time' %in% synonims[[across_inner_dim]]) {
+          metadata_tmp <- as.POSIXct(metadata_tmp, origin = "1970-01-01", tz = 'UTC')
+        }
+        picked_common_vars[[across_inner_dim]] <- metadata_tmp
+        attr(picked_common_vars[[across_inner_dim]], 'variables') <- saved_reshaped_attr
+      }
+      if (split_multiselected_dims & !is.null(picked_common_vars)) {
+        if (!identical(inner_dim_has_split_dim, character(0))) {
+          metadata_tmp <- array(picked_common_vars[[inner_dim_has_split_dim]], dim = final_dims_fake_metadata)
+          # Convert numeric back to dates
+          if (is(picked_common_vars[[inner_dim_has_split_dim]], 'POSIXct')) {
+            metadata_tmp <- as.POSIXct(metadata_tmp, origin = "1970-01-01", tz = 'UTC')
+          }
+          picked_common_vars[[inner_dim_has_split_dim]] <- metadata_tmp
+          attr(picked_common_vars[[inner_dim_has_split_dim]], 'variables') <- saved_reshaped_attr
+        }
+      }
+    }
+
+  }
+  # Print the warnings from transform
+  if (!is.null(c(warnings1, warnings2, warnings3))) {
+    transform_warnings_list <- lapply(c(warnings1, warnings2, warnings3), function(x) {
+      return(x$message)
+    })
+    transform_warnings_list <- unique(transform_warnings_list)
+    for (i in 1:length(transform_warnings_list)) {
+      .warning(transform_warnings_list[[i]])
+    }
+  }
+ 
   # Change final_dims_fake back because retrieve = FALSE will use it for attributes later
   if (exists("final_dims_fake_output")) {
     final_dims_fake <- final_dims_fake_output

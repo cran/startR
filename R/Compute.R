@@ -25,7 +25,7 @@
 #'  to use for the computation. The default value is 1.
 #'@param cluster A list of components that define the configuration of the 
 #'  machine to be run on. The comoponents vary from the different machines.
-#'  Check \href{https://earth.bsc.es/gitlab/es/startR/}{startR GitLab} for more 
+#'  Check \href{https://earth.bsc.es/gitlab/es/startR/-/blob/master/inst/doc/practical_guide.md}{Practical guide on GitLab} for more 
 #'  details and examples. Only needed when the computation is not run locally. 
 #'  The default value is NULL.
 #'@param ecflow_suite_dir A character string indicating the path to a folder in
@@ -82,6 +82,7 @@
 #'  wf <- AddStep(data, step)
 #'  res <- Compute(wf, chunks = list(longitude = 4, sdate = 2))
 #'
+#'@importFrom methods is
 #'@export
 Compute <- function(workflow, chunks = 'auto',
                     threads_load = 1, threads_compute = 1, 
@@ -89,13 +90,13 @@ Compute <- function(workflow, chunks = 'auto',
                     ecflow_server = NULL, silent = FALSE, debug = FALSE,
                     wait = TRUE) {
   # Check workflow
-  if (!any(c('startR_cube', 'startR_workflow') %in% class(workflow))) {
+  if (!is(workflow, 'startR_cube') & !is(workflow, 'startR_workflow')) {
     stop("Parameter 'workflow' must be an object of class 'startR_cube' as ",
          "returned by Start or of class 'startR_workflow' as returned by ",
          "AddStep.")
   }
   
-  if ('startR_cube' %in% class(workflow)) {
+  if (is(workflow, 'startR_cube')) {
     #machine_free_ram <- 1000000000
     #max_ram_ratio <- 0.5
     #data_size <- prod(c(attr(workflow, 'Dimensions'), 8))

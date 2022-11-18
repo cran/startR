@@ -72,7 +72,7 @@
 #'
 #'@export
 Collect <- function(startr_exec, wait = TRUE, remove = TRUE) {
-  if (!('startR_exec' %in% class(startr_exec))) {
+  if (!is(startr_exec, 'startR_exec')) {
     stop("Parameter 'startr_exec' must be an object of the class ",
          "'startR_exec', as returned by Collect(..., wait = FALSE).")
   }

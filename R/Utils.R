@@ -1,4 +1,5 @@
 #'@import abind
+#'@importFrom methods is
 #'@importFrom ClimProjDiags Subset
 .chunk <- function(chunk, n_chunks, selectors) {
   if (any(chunk > n_chunks)) {
@@ -806,7 +807,7 @@
               readRDS(paste0(shared_dir, '/',
                              chunk_files_original[found_chunk]))
             })
-            if (('try-error' %in% class(array_of_chunks[[i]]))) {
+            if (is(array_of_chunks[[i]], 'try-error')) {
               message("Waiting for an incomplete file transfer...")
               Sys.sleep(5)
             } else {
@@ -843,4 +844,28 @@
 
 .KnownLatNames <- function() {
   known_lat_names <- c('lat', 'latitude', 'y', 'j', 'nav_lat')
+}
+
+.ReplaceElementInVector <- function(x, target, new_val) {
+  # x is a vector with name
+  # target is a string
+  # new_val is a vector with name
+  # E.g., Change [a = 2, b = 3] to [c = 1, d = 2, b = 3], then:
+  #       x = c(a = 2, b = 3), target = 'a', new_val = c(c = 1, d = 2)
+  new_names <- unlist(lapply(as.list(names(x)), function(x) if (x == target) names(new_val) else x))
+  new_list <- vector('list', length = length(new_names))
+  for (i in 1:length(new_list)) {
+    new_list[[i]] <- c(new_val, x)[which(c(names(new_val), names(x)) == new_names[i])]
+  }
+  return(unlist(new_list))
+}
+
+.withWarnings <- function(expr) {
+    myWarnings <- NULL
+    wHandler <- function(w) {
+      myWarnings <<- c(myWarnings, list(w))
+      invokeRestart("muffleWarning")
+    }
+    val <- withCallingHandlers(expr, warning = wHandler)
+    list(value = val, warnings = myWarnings)
 }

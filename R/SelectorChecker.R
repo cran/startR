@@ -35,6 +35,7 @@
 #'sub_array_of_values <- seq(90, -90, length.out = 258)[2:257]
 #'SelectorChecker(sub_array_of_selectors, sub_array_of_values)
 #'
+#'@importFrom methods is
 #'@export
 SelectorChecker <- function(selectors, var = NULL, return_indices = TRUE,
                             tolerance = NULL) {
@@ -93,7 +94,7 @@ SelectorChecker <- function(selectors, var = NULL, return_indices = TRUE,
             
             tol <- 0
             if (!is.null(tolerance)) {
-              if (!any(class(tolerance) %in% "numeric")) {
+              if (!is(tolerance, "numeric")) {
                 stop("Expected a numeric *_tolerance.")
               }
               tol <- tolerance
@@ -148,7 +149,7 @@ SelectorChecker <- function(selectors, var = NULL, return_indices = TRUE,
             val <- selectors[[i]]
             tol <- 0
             if (!is.null(tolerance)) {
-              if (!any(class(tolerance) %in% "difftime")) {
+              if (!is(tolerance, "difftime")) {
                 stop("Expected a difftime *_tolerance.")
               }
               tol <- tolerance
@@ -194,7 +195,7 @@ SelectorChecker <- function(selectors, var = NULL, return_indices = TRUE,
                             "nearest values."))
           }
           if (!is.null(tolerance)) {
-            if (!any(class(tolerance) %in% 'numeric')) {
+            if (!is(tolerance, 'numeric')) {
               stop("Expected a numeric *_tolerance.")
             }
           }
@@ -228,7 +229,7 @@ SelectorChecker <- function(selectors, var = NULL, return_indices = TRUE,
                         "nearest values."))
       }
       if (!is.null(tolerance)) {
-        if (!any(class(tolerance) %in% 'difftime')) {
+        if (!is(tolerance, 'difftime')) {
           stop("Expected a difftime *_tolerance.")
         }
       }
