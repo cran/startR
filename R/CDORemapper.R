@@ -33,7 +33,7 @@
 #'  data_path <- system.file('extdata', package = 'startR')
 #'  path_obs <- file.path(data_path, 'obs/monthly_mean/$var$/$var$_$sdate$.nc')
 #'  sdates <- c('200011')
-#'  \donttest{
+#'  \dontrun{
 #'  data <- Start(dat = list(list(path = path_obs)),
 #'                var = 'tos',
 #'                sdate = sdates,

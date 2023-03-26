@@ -240,58 +240,123 @@ NcDataReader <- function(file_path = NULL, file_object = NULL,
             # define day in each month
             leap_month_day <- c(31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
             no_leap_month_day <- c(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
-            # Origin year and month
-            ori_year <- as.numeric(substr(parts[2], 1, 4))
-            ori_month <- as.numeric(substr(parts[2], 6, 7))
-            if (is.na(ori_month)) {
-              ori_month <- as.numeric(substr(parts[2], 6, 6))
-            }
-            if (!is.numeric(ori_year) | !is.numeric(ori_month)) {
-              stop(paste0("The time unit attribute format is not 'YYYY-MM-DD' or 'YYYY-M-D'. ",
-                          "Check the file or contact the maintainer."))
-            }
 
+            # If calendar is gregorian, we get the result date directly instead of calculating how many seconds we have. 
+            # The other calendar type can also do this but then we need to calculate each date in for loop.
+            #TODO: Try to use 'clock' to calculate the date (but dependency will be added)
             if (calendar == 'gregorian') {
-              # Find how many years + months 
-              yr_num <- floor(result / 12)
-              month_left <- result - yr_num * 12
-              # Find the leap years we care
-              if (ori_month <= 2) {
-                leap_num <- length(which(sapply(ori_year:(ori_year + yr_num - 1), s2dv::LeapYear)))
-              } else {
-                leap_num <- length(which(sapply((ori_year + 1):(ori_year + yr_num), s2dv::LeapYear)))
+              # Origin year and month and day
+              ori_year <- as.numeric(substr(parts[2], 1, 4))
+              ori_month <- as.numeric(substr(parts[2], 6, 7))
+              ori_day <- as.numeric(substr(parts[2], 9, 10))
+              if (is.na(ori_month)) {
+                ori_month <- as.numeric(substr(parts[2], 6, 6))
+                ori_day <- as.numeric(substr(parts[2], 8, 8))
               }
-              total_days <- leap_num * 366 + (yr_num - leap_num) * 365  # not include month_left yet
-
-              if (month_left != 0) {
-                if ((ori_month + month_left) <= 12) { # the last month is still in the same last yr
-                  # Is the last year a leap year?
-                  last_leap <- s2dv::LeapYear(ori_year + yr_num)
-                  if (last_leap) {
-                    total_days <- total_days + sum(leap_month_day[ori_month:(ori_month + month_left - 1)])
+              if (!is.numeric(ori_year) | !is.numeric(ori_month) | !is.numeric(ori_day)) {
+                stop(paste0("The time unit attribute format is not 'YYYY-MM-DD' or 'YYYY-M-D'. ",
+                            "Check the file or contact the maintainer."))
+              }
+              result_vec <- rep(NA, length = length(result))
+              for (result_i in 1:length(result)) {
+                yr_num <- floor(result[result_i] / 12)
+                month_left <- result[result_i] - yr_num * 12
+                result_year <- ori_year + yr_num
+                result_month <- ori_month + floor(month_left)
+                result_day <- ori_day
+                #NOTE: Assumption that hour down is 00
+                result_hour <- 0
+                if (result_month > 12) {
+                  result_year <- result_year + 1
+                  result_month <- result_month - 12
+                }
+                if (month_left %% 1 != 0) {
+                  if (result_month == 2) {
+                    day_in_month <- ifelse(s2dv::LeapYear(result_year), 29, 28)
                   } else {
-                    total_days <- total_days + sum(no_leap_month_day[ori_month:(ori_month + month_left - 1)])
+                    day_in_month <- no_leap_month_day[result_month]
                   }
-                } else { # the last month ends in the next yr
-                  if (ori_month == 2) { # e.g., 2005-02-16 + 11mth = 2006-01-16
-                    last_leap <- s2dv::LeapYear(ori_year + yr_num) # still consider 2005
-                    if (last_leap) {
-                      total_days <- total_days + sum(leap_month_day[2:12])
-                    } else {
-                      total_days <- total_days + sum(no_leap_month_day[2:12])
-                    }
-                  } else { # e.g., 2005-04-16 + 11mth = 2006-03-16
-                    last_leap <- s2dv::LeapYear(ori_year + yr_num + 1)
-                    needed_month <- c(ori_month:12, 1:(ori_month + month_left - 12 - 1))
-                    if (last_leap) {
-                      total_days <- total_days + sum(leap_month_day[needed_month])
-                    } else {
-                      total_days <- total_days + sum(no_leap_month_day[needed_month])
-                    }
+                  result_day <- ori_day + (month_left - floor(month_left)) * day_in_month
+                  if (result_day > day_in_month) {
+                    result_month <- result_month + 1
+                    result_day <- result_day - day_in_month
+                  }
+                  if (result_month > 12) {
+                    result_year <- result_year + 1
+                    result_month <- result_month - 12
+                  }
+                  # if there is hour left
+                  if (result_day %% 1 != 0) {
+                    result_hour <- (result_day - floor(result_day)) * 24
+                    result_day <- floor(result_day)
+                  }
+                  if (result_hour %% 1 != 0) {
+                    warning("The time value is not correct below 'hour'.")
+                    result_hour <- round(result_hour)
                   }
                 }
+                result_month <- sprintf("%02d", result_month)
+                result_day <- sprintf("%02d", result_day)
+                result_hour <- sprintf("%02d", result_hour)
+                # Combine all the parts into one string
+                tmp <- paste(result_year, result_month, result_day, sep = '-')
+                tmp <- paste0(tmp, ' ', result_hour, ':00:00')
+                result_vec[result_i] <- tmp
               }
-              result <- total_days * 24 * 60 * 60 # day to sec
+              # Transfer the strings to time class
+              new_array <- PCICt::as.PCICt(result_vec, cal = 'gregorian')
+              new_array <- suppressWarnings(PCICt::as.POSIXct.PCICt(new_array, tz = "UTC"))
+
+#            if (calendar == 'gregorian') {
+#              # Find how many years + months 
+#              yr_num <- floor(result / 12)
+#              month_left <- result - yr_num * 12
+#              # Find the leap years we care
+#              if (ori_month <= 2) {
+#                leap_num <- length(which(sapply(ori_year:(ori_year + yr_num - 1), s2dv::LeapYear)))
+#              } else {
+#                leap_num <- length(which(sapply((ori_year + 1):(ori_year + yr_num), s2dv::LeapYear)))
+#              }
+#              total_days <- leap_num * 366 + (yr_num - leap_num) * 365  # not include month_left yet
+#
+#              if (month_left != 0) {
+##TODO: This part until result <- total_days* 24 ... is not correct. It doesn't consider ori_day
+#                if ((ori_month + month_left - 1) <= 12) { # the last month is still in the same last yr
+#                  # Is the last year a leap year?
+#                  last_leap <- s2dv::LeapYear(ori_year + yr_num)
+#                  if (last_leap) {
+#                    month_day_vector <- leap_month_day
+#                  } else {
+#                    month_day_vector <- no_leap_month_day
+#                  }
+#                  if (month_left >= 1) { # Only a few days in Jan. only, directly go to the next "if"
+#                    total_days <- total_days + sum(month_day_vector[ori_month:(ori_month + month_left - 1)])
+#                  }
+#                  if ((month_left %% 1) != 0) {
+#                    # month_left has decimal point like 11.5
+#                    total_days <- total_days + (month_left - floor(month_left)) * month_day_vector[ceiling(month_left)]
+#                  }
+#                } else { # the last month ends in the next yr
+#                  if (ori_month == 2) { # e.g., 2005-02-16 + 11mth = 2006-01-16
+#                    last_leap <- s2dv::LeapYear(ori_year + yr_num) # still consider 2005
+#                    if (last_leap) {
+#                      total_days <- total_days + sum(leap_month_day[2:12])
+#                    } else {
+#                      total_days <- total_days + sum(no_leap_month_day[2:12])
+#                    }
+#                  } else { # e.g., 2005-04-16 + 11mth = 2006-03-16
+#                    last_leap <- s2dv::LeapYear(ori_year + yr_num + 1)
+#                    needed_month <- c(ori_month:12, 1:(ori_month + month_left - 12 - 1))
+#                    if (last_leap) {
+#                      total_days <- total_days + sum(leap_month_day[needed_month])
+#                    } else {
+#                      total_days <- total_days + sum(no_leap_month_day[needed_month])
+#                    }
+#                  }
+#                }
+#              }
+#              result <- total_days * 24 * 60 * 60 # day to sec
+
             } else if (calendar %in% c('365_day',' 365', 'noleap')) {
               yr_num <- floor(result / 12)
               month_left <- result - yr_num * 12
@@ -308,9 +373,10 @@ NcDataReader <- function(file_path = NULL, file_object = NULL,
             }
           }
 
-          new_array <- PCICt::as.PCICt(result, cal = calendar, origin = parts[2])[]
-          new_array <- suppressWarnings(PCICt::as.POSIXct.PCICt(new_array, tz = "UTC"))
-
+          if (!(units %in% c('month', 'months') & calendar == 'gregorian')) {
+            new_array <- PCICt::as.PCICt(result, cal = calendar, origin = parts[2])[]
+            new_array <- suppressWarnings(PCICt::as.POSIXct.PCICt(new_array, tz = "UTC"))
+          }
           #new_array <- seq(as.POSIXct(parts[2]), 
           #                  length = max(result, na.rm = TRUE) + 1, 
           #                  by = units)[result[] + 1]

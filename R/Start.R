@@ -1385,7 +1385,7 @@ Start <- function(..., # dim = indices/selectors,
       # names as depended dim.
       for (j in 1:length(dat_selectors[[file_dim]])) {
         sv <- selector_vector <- dat_selectors[[file_dim]][[j]]
-        if (!is(sv, first_class) ||
+        if (!inherits(sv, first_class) ||
             !identical(first_length, length(sv))) {
           stop("All provided selectors for depending dimensions must ",
                "be vectors of the same length and of the same class.")
@@ -3967,7 +3967,7 @@ Start <- function(..., # dim = indices/selectors,
         if (!identical(inner_dim_has_split_dim, character(0))) {
           metadata_tmp <- array(picked_common_vars[[inner_dim_has_split_dim]], dim = final_dims_fake_metadata)
           # Convert numeric back to dates
-          if (is(picked_common_vars[[inner_dim_has_split_dim]], 'POSIXct')) {
+          if (inherits(picked_common_vars[[inner_dim_has_split_dim]], 'POSIXct')) {
             metadata_tmp <- as.POSIXct(metadata_tmp, origin = "1970-01-01", tz = 'UTC')
           }
           picked_common_vars[[inner_dim_has_split_dim]] <- metadata_tmp
@@ -4096,7 +4096,7 @@ Start <- function(..., # dim = indices/selectors,
         if (!identical(inner_dim_has_split_dim, character(0))) {
           metadata_tmp <- array(picked_common_vars[[inner_dim_has_split_dim]], dim = final_dims_fake_metadata)
           # Convert numeric back to dates
-          if (is(picked_common_vars[[inner_dim_has_split_dim]], 'POSIXct')) {
+          if (inherits(picked_common_vars[[inner_dim_has_split_dim]], 'POSIXct')) {
             metadata_tmp <- as.POSIXct(metadata_tmp, origin = "1970-01-01", tz = 'UTC')
           }
           picked_common_vars[[inner_dim_has_split_dim]] <- metadata_tmp
@@ -4185,7 +4185,12 @@ Start <- function(..., # dim = indices/selectors,
     start_call <- match.call()
     for (i in 2:length(start_call)) {
       if (class(start_call[[i]]) %in% c('name', 'call')) {
-        start_call[[i]] <- eval.parent(start_call[[i]])
+        tmp <- eval.parent(start_call[[i]])
+        if (is.null(tmp)) {
+          start_call[i] <- list(NULL)
+        } else {
+          start_call[[i]] <- eval.parent(start_call[[i]])
+        }
       }
     }
     start_call[['retrieve']] <- TRUE

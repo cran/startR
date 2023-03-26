@@ -1,3 +1,7 @@
+# startR v2.2.1 (Release date: 2023-03-24)
+- Start(): Bugfix when the input parameters are assigned by a variable with NULL value and retrieve = F 
+- NcDataReader(): Bugfix for wrong time attributes return when the unit is "month"
+
 # startR v2.2.1 (Release date: 2022-11-17)
 - Reduce warning messages from CDO.  
 - Reduce repetitive warning messages from CDORemapper() when single core is used. When multiple cores 
