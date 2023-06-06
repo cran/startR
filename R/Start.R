@@ -2061,24 +2061,28 @@ Start <- function(..., # dim = indices/selectors,
                   transform_crop_domain[[transform_var]] <-
                     generate_transform_crop_domain_values(
                       transform_crop_domain[[transform_var]], 
-                      picked_vars = picked_common_vars_ordered[[transform_var]])
+                      picked_vars = picked_common_vars_ordered[[transform_var]], 
+                      transform_var)
                 } else {
                   transform_crop_domain[[transform_var]] <-
                     generate_transform_crop_domain_values(
                       transform_crop_domain[[transform_var]],
-                      picked_vars = picked_common_vars[[transform_var]])
+                      picked_vars = picked_common_vars[[transform_var]], 
+                      transform_var)
                 }
               } else {  # return_vars
                 if (transform_var %in% names(dim_reorder_params)) {
                   transform_crop_domain[[transform_var]] <-
                     generate_transform_crop_domain_values(
                       transform_crop_domain[[transform_var]],
-                      picked_vars = picked_vars_ordered[[i]][[transform_var]])
+                      picked_vars = picked_vars_ordered[[i]][[transform_var]], 
+                      transform_var)
                 } else {  
                   transform_crop_domain[[transform_var]] <-
                     generate_transform_crop_domain_values(
                       transform_crop_domain[[transform_var]],
-                      picked_vars = picked_vars[[i]][[transform_var]])
+                      picked_vars = picked_vars[[i]][[transform_var]], 
+                      transform_var)
                 }
               }
             } else if (is.atomic(transform_crop_domain[[transform_var]])) {

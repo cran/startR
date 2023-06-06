@@ -1,6 +1,6 @@
 Package: startR
 Title: Automatically Retrieve Multidimensional Distributed Data Sets
-Version: 2.2.2
+Version: 2.2.3
 Authors@R: c(
     person("Nicolau", "Manubens", , "nicolau.manubens@bsc.es", role = c("aut")),
     person("An-Chi", "Ho", , "an.ho@bsc.es", role = c("aut", "cre")), 
@@ -29,8 +29,9 @@ BugReports: https://earth.bsc.es/gitlab/es/startR/-/issues
 SystemRequirements: cdo ecFlow
 Encoding: UTF-8
 RoxygenNote: 7.2.0
+Config/testthat/edition: 3
 NeedsCompilation: no
-Packaged: 2023-03-24 11:35:36 UTC; aho
+Packaged: 2023-06-06 09:02:16 UTC; aho
 Author: Nicolau Manubens [aut],
   An-Chi Ho [aut, cre],
   Nuria Perez-Zanon [aut] (<https://orcid.org/0000-0001-8568-3071>),
@@ -41,4 +42,4 @@ Author: Nicolau Manubens [aut],
   BSC-CNS [aut, cph]
 Maintainer: An-Chi Ho <an.ho@bsc.es>
 Repository: CRAN
-Date/Publication: 2023-03-26 21:50:02 UTC
+Date/Publication: 2023-06-06 12:10:05 UTC

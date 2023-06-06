@@ -1,4 +1,7 @@
-# startR v2.2.1 (Release date: 2023-03-24)
+# startR v2.2.3 (Release date: 2023-06-06)
+- Bugfix in Start(): when using parameter `longitude = 'all'` with transform, there was a missing point for some cases.
+
+# startR v2.2.2 (Release date: 2023-03-24)
 - Start(): Bugfix when the input parameters are assigned by a variable with NULL value and retrieve = F 
 - NcDataReader(): Bugfix for wrong time attributes return when the unit is "month"
 

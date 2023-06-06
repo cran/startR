@@ -1,6 +1,6 @@
-e60e8992e0138e0703cd975ec9dea245 *DESCRIPTION
+271a165cd1b60f2076a4b2bd3ac233ef *DESCRIPTION
 31ca854c7fdc5f22fea6f3e85356d024 *NAMESPACE
-a9c2db61ad7d5f6cd1c94b505b922315 *NEWS.md
+ff9b33990f6ef6a3fa6d438da937c7a4 *NEWS.md
 690ab3c2eec8dbb209d07625f4b5046f *R/AddStep.R
 716f03872b766a81095e2c6711a94a1c *R/ByChunks.R
 9d68158b64ec7c439b7e710409d2e434 *R/CDORemapper.R
@@ -13,12 +13,12 @@ dc6ef15e2f3cb527b7ad4cd30d99f625 *R/NcDimReader.R
 9788b1340abc454ac52ccc60993514d3 *R/NcVarReader.R
 5edfbe70243f387506fef70dcc536e97 *R/SelectorChecker.R
 3b1cafc37fa808dd5b4f684037755a68 *R/Sort.R
-911bc0979118f275b6120910bb4c6671 *R/Start.R
+03b6b9fc7c3f6b9fec182281f88f40bb *R/Start.R
 5c7e6105e3ff3a648bea00bc32b6bd5b *R/Step.R
 2213cb94fd50482688de56988ee157b7 *R/Utils.R
 17a6b0b1d086257bf20e0b107cdecca1 *R/indices.R
 0b1bc87a2e76e3fb6cb460aa8f1fc61b *R/values.R
-a5e78298d0deddb53a39d34d9633d2ab *R/zzz.R
+1e02fe0fb9f2998acf041c4540ecba75 *R/zzz.R
 9c0db844dd2c027c9f7e9a87e7c029c5 *inst/chunking/Chunk.ecf
 297cd971228adcbd6dca7ecdcc6c11af *inst/chunking/clean_devshm.sh
 e51ebece9b7433a2fcde8c91b453b001 *inst/chunking/head.h
@@ -333,7 +333,7 @@ a76ebef7b827b2c4a64623296a9ba3ea *inst/extdata/obs/monthly_mean/tos/tos_201006.n
 401bed2b0ed111779d9660f9ef9bd7d6 *inst/extdata/obs/monthly_mean/tos/tos_201009.nc
 ea6d84e0e636741a52a1efd6a6e7802e *inst/extdata/obs/monthly_mean/tos/tos_201010.nc
 d62d190e738540cc6621a159fe719c5e *man/AddStep.Rd
-309e2365e3b7a267111c4274dd74de5a *man/CDORemapper.Rd
+6096e8aa97da38ba7188355017324080 *man/CDORemapper.Rd
 e9eba7ecf053b1dfbcde74e5305746b3 *man/Collect.Rd
 ce953823218a5da7018b206ca591d83d *man/Compute.Rd
 0a5e6e7817a9b2c60394d40b8c5af441 *man/NcCloser.Rd

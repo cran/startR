@@ -565,9 +565,21 @@ generate_vars_to_transform <- function(vars_to_transform, picked_vars, transform
 }
 
 # Turn indices to values for transform_crop_domain
-generate_transform_crop_domain_values <- function(transform_crop_domain, picked_vars) {
+generate_transform_crop_domain_values <- function(transform_crop_domain, 
+                                                  picked_vars, 
+                                                  transform_var) {
   if (any(transform_crop_domain == 'all')) {
-    transform_crop_domain <- c(picked_vars[1], tail(picked_vars, 1))
+    if (transform_var %in% .KnownLatNames()) {
+      transform_crop_domain <- c(-90, 90)
+    } else if (transform_var %in% .KnownLonNames()) {
+      if (any(picked_vars > 180)) {
+        transform_crop_domain <- c(0, 360)
+      } else {
+        transform_crop_domain <- c(-180, 180)
+      }
+    } else {
+      transform_crop_domain <- c(picked_vars[1], tail(picked_vars, 1))
+    }
   } else {  # indices()
     if (is.list(transform_crop_domain)) {
       transform_crop_domain <- picked_vars[unlist(transform_crop_domain)]
