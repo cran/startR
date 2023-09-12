@@ -15,25 +15,27 @@ the RDS file.}
 Collect() call to finish (TRUE) or not (FALSE). If TRUE, it will be a 
 blocking call, in which Collect() will retrieve information from the HPC,
 including signals and outputs, each polling_period seconds. The the status
-can be monitored on the EC-Flow GUI. Collect() will not return until the 
-results of all chunks have been received. If FALSE, Collect() will crash with
-an error if the execution has not finished yet, otherwise it will return the
-merged array. The default value is TRUE.}
+can be monitored on the workflow manager GUI. Collect() will not return  
+until the results of all the chunks have been received. If FALSE, Collect()
+return an error if the execution has not finished, otherwise it will return
+the merged array. The default value is TRUE.}
 
-\item{remove}{A logical value deciding whether to remove of all data results 
-received from the HPC (and stored under 'ecflow_suite_dir', the parameter in
-Compute()) after being collected. To preserve the data and Collect() it as 
-many times as desired, set remove to FALSE. The default value is TRUE.}
+\item{remove}{A logical value deciding whether to remove of all chunk results 
+received from the HPC after data being collected, as well as the local job 
+folder under 'ecflow_suite_dir' or 'autosubmit_suite_dir'. To preserve the
+data and Collect() them as many times as desired, set remove to FALSE. The
+default value is TRUE.}
 }
 \value{
 A list of merged data array.
 }
 \description{
 The final step of the startR workflow after the data operation. It is used when
-the parameter 'wait' of Compute() is FALSE, and the functionality includes 
-updating the job status shown on the EC-Flow GUI and collecting all the chunks
-of results as one data array when the execution is done. See more details on 
-\href{https://earth.bsc.es/gitlab/es/startR/}{startR GitLab}.
+the parameter 'wait' of Compute() is FALSE. It combines all the chunks of the
+results as one data array when the execution is done. See more details on 
+\href{https://earth.bsc.es/gitlab/es/startR/-/blob/master/inst/doc/practical_guide.md}{practical guide}.
+Collect() calls Collect_ecflow() or Collect_autosubmit() according to the 
+chosen workflow manager.
 }
 \examples{
  data_path <- system.file('extdata', package = 'startR')

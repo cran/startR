@@ -704,8 +704,8 @@
 #'@param num_procs An integer of number of processes to be created for the
 #'  parallel execution of the retrieval/transformation/arrangement of the
 #'  multiple involved files in a call to Start(). If set to NULL,
-#'  takes the number of available cores (as detected by detectCores() in 
-#'  the package 'future'). The default value is 1 (no parallel execution).
+#'  takes the number of available cores (as detected by future::detectCores).
+#'  The default value is 1 (no parallel execution).
 #'@param ObjectBigmemory a character string to be included as part of the 
 #'  bigmemory object name. This parameter is thought to be used internally by the
 #'  chunking capabilities of startR.
@@ -4108,7 +4108,90 @@ Start <- function(..., # dim = indices/selectors,
         }
       }
     }
+    # Retrieve variable metadata
+    # Compare array_of_metadata_flags with array_of_files_to_load to know which files to take for metadata
+    if (!is.null(metadata_dims)) {
+      array_of_metadata_flags <- array(FALSE, dim = dim(array_of_files_to_load))
+      metadata_indices_to_load <- as.list(rep(1, length(dim(array_of_files_to_load))))
+      names(metadata_indices_to_load) <- names(dim(array_of_files_to_load))
+      metadata_indices_to_load[metadata_dims] <- as.list(rep(TRUE, length(metadata_dims)))
+      array_of_metadata_flags <- do.call('[<-', c(list(array_of_metadata_flags),  metadata_indices_to_load,
+                                                  list(value = rep(TRUE, prod(dim(array_of_files_to_load)[metadata_dims])))))
 
+      if (tail(names(dim(array_of_files_to_load)), 1) != found_pattern_dim) {
+        tmp1 <- s2dv::Reorder(array_of_files_to_load, c(2:length(dim(array_of_files_to_load)), 1))
+        tmp2 <- s2dv::Reorder(array_of_metadata_flags, c(2:length(dim(array_of_metadata_flags)), 1))
+        files_for_metadata <- tmp1[tmp2]
+      } else {
+        files_for_metadata <- array_of_files_to_load[array_of_metadata_flags]
+      }
+
+      # Get variable name
+      #NOTE: This part probably will fail when one netCDF file has more than one variable.
+      if (found_pattern_dim %in% metadata_dims) {  # metadata_dims has "dat"
+        if (any(metadata_dims %in% c('var', 'variable'))) { # metadata_dim is c('dat', 'var')
+          how_many_vars <-  length(dat[[1]][['selectors']]$var[[1]])
+        } else if (length(metadata_dims) > 1) {  # metadata_dims is c('dat', xxx)
+          how_many_vars <- length(dat[[1]][['selectors']][[metadata_dims[which(found_pattern_dim != metadata_dims)]]][[1]])
+        } else {  # metadata_dims is 'dat'
+          how_many_vars <- 1
+        }
+        tmp_var <- matrix(NA, how_many_vars, length(dat))
+        for (i_dat in 1:dim(array_of_metadata_flags)[found_pattern_dim]) {
+          if (any(metadata_dims %in% c('var', 'variable'))) { # metadata_dims has "var"
+            tmp_var[, i_dat] <- dat[[i_dat]][['selectors']]$var[[1]]
+          } else if (length(metadata_dims) > 1) {  # metadata_dims is c('dat', xxx)
+            tmp_var[, i_dat] <- rep(dat[[i_dat]][['selectors']]$var[[1]][1],
+                                    length(dat[[1]][['selectors']][[metadata_dims[which(found_pattern_dim != metadata_dims)]]][[1]]))
+          } else {  # metadata_dims is 'dat'
+            tmp_var[, i_dat] <- dat[[i_dat]][['selectors']]$var[[1]][1]
+          }
+        }
+
+        # if metadat_dims = c('dat', 'var') and [dat = 2, var = 2], tmp_var has length 4, like c('tas', 'tos', 'tas', 'tos').
+        # if metadata_dims = 'dat' and [dat = 2], tmp_var has length 2 like c('tas', 'tos').
+        tmp_var <- c(tmp_var)
+
+      } else {  # metadata_dims doesn't have "dat"
+        if (any(metadata_dims %in% c('var', 'variable'))) { # metadata_dims has "var"
+          tmp_var <- dat[[1]][['selectors']]$var[[1]]
+        } else {
+          tmp_var <- rep(dat[[1]][['selectors']]$var[[1]][1], length(dat[[1]][['selectors']][[metadata_dims]][[1]]))
+        }
+        # if metadata_dims = 'var' and [var = 2], tmp_var has length 2 like c('tas', 'tos')
+        # if metadata_dims = 'table' and [table = 2], tmp_var has length 1 like 'tas'
+      }
+
+      loaded_metadata <- vector('list', length = length(files_for_metadata))
+      for (i_file in 1:length(files_for_metadata)) {
+        #NOTE: Not use ncatt_get() because it only gets the attr shown with ncdump -h
+        tmp <- file_opener(files_for_metadata[i_file])
+        if (!is.null(tmp)) {  # if file exists
+          loaded_metadata[[i_file]][[1]] <- tmp$var[[tmp_var[i_file]]]
+          names(loaded_metadata[[i_file]]) <- tmp_var[i_file]
+          file_closer(tmp)
+        }
+      }
+      # Find loaded_metadata_files identical as "retrieve = T" case. If dataset_has_files is F, deduct that dataset from counting
+      ind_loaded_metadata_has_values <- which(!sapply(loaded_metadata, is.null)) # c(1, 2, 4)
+      if (!all(dataset_has_files)) {  # If dataset_has_files has F, deduct that dataset from counting
+        if (found_pattern_dim %in% metadata_dims) {  # metadata_dims has "dat" 
+          dataset_has_files_expand <- rep(dataset_has_files, each = how_many_vars)
+          i_ind <- 1
+          while (i_ind <= length(ind_loaded_metadata_has_values)) { # 3, 4, 8
+            if (ind_loaded_metadata_has_values[i_ind] > i_ind) {
+              ind_loaded_metadata_has_values[i_ind] <- ind_loaded_metadata_has_values[i_ind] - length(which(!dataset_has_files_expand[1:dataset_has_files_expand[i_ind]]))
+            }
+            i_ind <- i_ind + 1
+          }
+        }
+      }
+      loaded_metadata_files <- as.character(ind_loaded_metadata_has_values)
+      loaded_metadata <- loaded_metadata[which(!sapply(loaded_metadata, is.null))]
+      return_metadata <- create_metadata_list(array_of_metadata_flags, metadata_dims, pattern_dims,
+                                              loaded_metadata_files, loaded_metadata, dat_names,
+                                              dataset_has_files)
+    }
   }
   # Print the warnings from transform
   if (!is.null(c(warnings1, warnings2, warnings3))) {
@@ -4150,25 +4233,26 @@ Start <- function(..., # dim = indices/selectors,
     file_selectors[[dat[[i]][['name']]]] <- dat[[i]][['selectors']][which(names(dat[[i]][['selectors']]) %in% found_file_dims[[i]])]
   }
 
+  # Prepare attr Variables
+  if (all(sapply(return_metadata, is.null))) {
+    # We don't have metadata of the variable (e.g., tas). The returned metadata list only 
+    # contains those are specified in argument "return_vars".
+    Variables_list <- c(list(common = picked_common_vars), picked_vars)
+    .warning(paste0("Metadata cannot be retrieved. The reason may be the ",
+                    "non-existence of the first file. Use parameter 'metadata_dims'",
+                    " to assign to file dimensions along which to return metadata, ",
+                    "or check the existence of the first file."))
+  } else {
+    # Add the metadata of the variable (e.g., tas) into the list of picked_vars or
+    # picked_common_vars.
+    Variables_list <- combine_metadata_picked_vars(
+                        return_metadata, picked_vars, picked_common_vars,
+                        metadata_dims, pattern_dims, length(dat))
+  }
+
   if (retrieve) {
     if (!silent) {
       .message("Successfully retrieved data.")
-    }
-
-    if (all(sapply(return_metadata, is.null))) {
-      # We don't have metadata of the variable (e.g., tas). The returned metadata list only 
-      # contains those are specified in argument "return_vars".
-      Variables_list <- c(list(common = picked_common_vars), picked_vars)
-      .warning(paste0("Metadata cannot be retrieved. The reason may be the ",
-                      "non-existence of the first file. Use parameter 'metadata_dims'",
-                      " to assign to file dimensions along which to return metadata, ",
-                      "or check the existence of the first file."))
-    } else {
-      # Add the metadata of the variable (e.g., tas) into the list of picked_vars or
-      # picked_common_vars.
-      Variables_list <- combine_metadata_picked_vars(
-                          return_metadata, picked_vars, picked_common_vars,
-                          metadata_dims, pattern_dims, length(dat))
     }
 
     attributes(data_array) <- c(attributes(data_array), 
@@ -4200,7 +4284,7 @@ Start <- function(..., # dim = indices/selectors,
     start_call[['retrieve']] <- TRUE
     attributes(start_call) <- c(attributes(start_call),
                                 list(Dimensions = final_dims_fake,
-                                     Variables = c(list(common = picked_common_vars), picked_vars),
+                                     Variables = Variables_list,
                                      ExpectedFiles = array_of_files_to_load,
                                      FileSelectors = file_selectors,
                                      PatternDim = found_pattern_dim,
@@ -4237,6 +4321,7 @@ Start <- function(..., # dim = indices/selectors,
   second_round_indices <- work_piece[['second_round_indices']]
   #print("2")
   file_to_open <- work_piece[['file_path']]
+  # Get data and metadata
   sub_array <- file_data_reader(file_to_open, NULL, 
                                 work_piece[['file_selectors']],
                                 first_round_indices, synonims)

@@ -50,7 +50,7 @@ SelectorChecker <- function(selectors, var = NULL, return_indices = TRUE,
       crescent_selectors <- TRUE
       if (all(sapply(selectors, 
                      function(x) {
-                       any(c('numeric', "POSIXct", "POSIXlt", "POSIXt", "Date") %in% class(x))
+                       any(c("numeric", "integer", "POSIXct", "POSIXlt", "POSIXt", "Date") %in% class(x))
                      }))) {
         if (selectors[[2]] < selectors[[1]]) {
           crescent_selectors <- FALSE

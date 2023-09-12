@@ -869,3 +869,149 @@
     val <- withCallingHandlers(expr, warning = wHandler)
     list(value = val, warnings = myWarnings)
 }
+
+# This function writes startR_autosubmit.sh to local startR_autosubmit folder, under expID/
+write_autosubmit_bash <- function(chunks, cluster, autosubmit_suite_dir) {
+  # "chunks" should be the argument "chunks" in Compute() plus the redundant margin dims,
+  # e.g., list(dat = 1, var = 1, sdate = 1, time = 1, lat = 2, lon = 3)
+
+  # Loop through chunks to create load script for each
+  for (n_chunk in 0:(prod(unlist(chunks)) - 1)) {
+
+    # Create chunk args
+    chunk_names <- names(chunks)
+    chunk_args <- matrix(NA, 2, length(chunks))
+    chunk_args[1, ] <- paste0('%JOBS.CHUNK_', n_chunk, '.', chunk_names, '%')
+    chunk_args[2, ] <- paste0('%JOBS.CHUNK_', n_chunk, '.', chunk_names, '_N%')
+    chunk_args <- paste0('(', paste(c(chunk_args), collapse = ' '), ')')
+
+    bash_script_template <- file(system.file('chunking/Autosubmit/startR_autosubmit.sh',
+                                 package = 'startR'))
+    bash_script_lines <- readLines(bash_script_template)
+    close(bash_script_template)
+
+    # Rewrite chunk_args=
+    bash_script_lines <- gsub('^chunk_args=*', paste0('chunk_args=', chunk_args),
+                              bash_script_lines)
+    # Include init commands 
+    bash_script_lines <- gsub('^include_init_commands',
+                              paste0(paste0(cluster[['init_commands']], collapse = '\n'), '\n'),
+
+                              bash_script_lines)
+    # Rewrite include_module_load
+    bash_script_lines <- gsub('^include_module_load',
+                              paste0('module load ', cluster[['r_module']]),
+                              bash_script_lines)
+    # Rewrite cd run_dir
+    # If run_dir is not specified, the script will run under ${proj_dir}
+    if (!is.null(cluster[['run_dir']])) {
+      bash_script_lines <- gsub('^cd_run_dir',
+                                paste0('cd ', cluster[['run_dir']]),
+                                bash_script_lines)
+    } else {
+      bash_script_lines <- gsub('^cd_run_dir', 'cd ${proj_dir}',
+                                bash_script_lines)
+    }
+
+    # Save modified .sh file under local$PROJECT_PATH in expdef.yml
+    #NOTE: dest_dir is ecflow_suite_dir_suite in ByChunks_autosubmit()
+    #NOTE: the file will be copied to proj/ by "autosubmit create"
+    dest_dir <- file.path(autosubmit_suite_dir, paste0("/STARTR_CHUNKING_", cluster$expid))
+
+    if (!file.exists(dest_dir)) {
+      dir.create(dest_dir, recursive = TRUE)
+    }
+    writeLines(bash_script_lines, paste0(dest_dir, '/startR_autosubmit_', n_chunk, '.sh'))
+  }
+}
+
+# This function generates the .yml files under autosubmit conf/
+write_autosubmit_confs <- function(chunks, cluster, autosubmit_suite_dir) {
+  # "chunks" is from Compute() input, e.g., chunks <- list(lat = 2, lon = 3)
+  # "cluster" is the argument "cluster" in Compute(), to set machine configuration
+  # "autosubmit_suite_dir" should be the local folder that has R script, like ecflow_suite_dir in Compute() 
+
+  # Get config template files from package
+  template_dir <- system.file('chunking/Autosubmit/', package = 'startR')
+  config_files <- list.files(template_dir, pattern = "*\\.yml$")
+
+  for (i_file in config_files) {
+
+    conf <- yaml::read_yaml(file.path(template_dir, i_file))
+    conf_type <- strsplit(i_file, split = "[.]")[[1]][1]
+
+############################################################
+    if (conf_type == "autosubmit") {
+
+      #Q: Should it be the total amount of chunk?
+      conf$config$MAXWAITINGJOBS <- as.integer(prod(unlist(chunks)))  # total amount of chunk
+      #NOTE: Nord3 max. amount of queued jobs is 366
+      if (conf$config$MAXWAITINGJOBS > 366) conf$config$MAXWAITINGJOBS <- 366
+      conf$config$TOTALJOBS <- as.integer(cluster$max_jobs)
+
+############################################################
+    } else if (conf_type == "expdef") {
+      conf$default$EXPID <- cluster$expid
+      conf$default$HPCARCH <- cluster$queue_host
+      # PROJECT_PATH should be where submit.sh and load....R stored --> local startR_autosubmit folder, under expID/ 
+      conf$local$PROJECT_PATH <- file.path(autosubmit_suite_dir, paste0("STARTR_CHUNKING_", cluster$expid))
+
+############################################################
+    } else if (conf_type == "jobs") {
+
+      chunks_vec <- lapply(lapply(chunks, seq, 1), rev) # list(lat = 1:2, lon = 1:3)
+      chunk_df <- expand.grid(chunks_vec)
+      nchunks <- nrow(chunk_df)
+      chunk_name <- paste0("CHUNK_", 0:(nchunks - 1))
+
+      # Fill in common configurations
+      jobs <- conf$JOBS
+      # wallclock from '01:00:00' to '01:00'
+      jobs[[1]]$WALLCLOCK <- substr(cluster$job_wallclock, 1, 5)
+      jobs[[1]]$PLATFORM <- cluster$queue_host
+      jobs[[1]]$THREADS <- as.integer(cluster$cores_per_job)
+      jobs[[1]][paste0(names(chunks), "_N")] <- as.integer(unlist(chunks))
+      jobs[[1]][names(chunks)] <- ""
+
+      # Create chunks and fill in info for each chunk
+      if (nchunks > 1) {
+        jobs <- c(jobs, rep(jobs, nchunks - 1))
+        names(jobs) <- chunk_name
+      }
+      for (i_chunk in 1:nchunks) {
+        jobs[[i_chunk]][names(chunks)] <- chunk_df[i_chunk, ]
+        jobs[[i_chunk]]$FILE <- paste0('startR_autosubmit_', i_chunk - 1, '.sh')
+      }
+
+      conf$JOBS <- jobs
+
+############################################################
+    } else if (conf_type == "platforms") {
+      if (tolower(cluster$queue_host) != "local") {
+        conf$Platforms[[cluster$queue_host]]$USER <- cluster$hpc_user
+        conf$Platforms[[cluster$queue_host]]$PROCESSORS_PER_NODE <- as.integer(cluster$cores_per_job)
+        if (!is.null(cluster$extra_queue_params)) {
+          tmp <- unlist(cluster$extra_queue_params)
+          for (ii in 1:length(tmp)) {
+            tmp[ii] <- paste0('\"', tmp[ii], '\"')
+          }
+          conf$Platforms[[cluster$queue_host]]$CUSTOM_DIRECTIVES <- paste0('[ ', paste(tmp, collapse = ','), ' ]')
+       }
+      }
+
+############################################################
+    } else {
+      stop("File ", i_file, " is not considered in this function.")
+    }
+
+############################################################
+    # Output directory
+    dest_dir <- paste0("/esarchive/autosubmit/", cluster$expid, "/conf/")
+    dest_file <- paste0(conf_type, "_", cluster$expid, ".yml")
+
+    # Write config file inside autosubmit dir
+    yaml::write_yaml(conf, paste0(dest_dir, dest_file))
+    Sys.chmod(paste0(dest_dir, dest_file), mode = "755", use_umask = F)
+
+  } # for loop each file
+}

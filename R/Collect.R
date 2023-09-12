@@ -1,11 +1,11 @@
 #'Collect and merge the computation results
 #'
 #'The final step of the startR workflow after the data operation. It is used when
-#'the parameter 'wait' of Compute() is FALSE, and the functionality includes 
-#'updating the job status shown on the EC-Flow GUI and collecting all the chunks
-#'of results as one data array when the execution is done. See more details on 
-#'\href{https://earth.bsc.es/gitlab/es/startR/}{startR GitLab}.
-#'
+#'the parameter 'wait' of Compute() is FALSE. It combines all the chunks of the
+#'results as one data array when the execution is done. See more details on 
+#'\href{https://earth.bsc.es/gitlab/es/startR/-/blob/master/inst/doc/practical_guide.md}{practical guide}.
+#'Collect() calls Collect_ecflow() or Collect_autosubmit() according to the 
+#'chosen workflow manager. 
 #'@param startr_exec An R object returned by Compute() when the parameter 'wait'
 #'  of Compute() is FALSE. It can be directly from a Compute() call or read from
 #'  the RDS file.
@@ -13,14 +13,15 @@
 #'  Collect() call to finish (TRUE) or not (FALSE). If TRUE, it will be a 
 #'  blocking call, in which Collect() will retrieve information from the HPC,
 #'  including signals and outputs, each polling_period seconds. The the status
-#'  can be monitored on the EC-Flow GUI. Collect() will not return until the 
-#'  results of all chunks have been received. If FALSE, Collect() will crash with
-#'  an error if the execution has not finished yet, otherwise it will return the
-#'  merged array. The default value is TRUE.
-#'@param remove A logical value deciding whether to remove of all data results 
-#'  received from the HPC (and stored under 'ecflow_suite_dir', the parameter in
-#'  Compute()) after being collected. To preserve the data and Collect() it as 
-#'  many times as desired, set remove to FALSE. The default value is TRUE.
+#'  can be monitored on the workflow manager GUI. Collect() will not return  
+#'  until the results of all the chunks have been received. If FALSE, Collect()
+#'  return an error if the execution has not finished, otherwise it will return
+#'  the merged array. The default value is TRUE.
+#'@param remove A logical value deciding whether to remove of all chunk results 
+#'  received from the HPC after data being collected, as well as the local job 
+#'  folder under 'ecflow_suite_dir' or 'autosubmit_suite_dir'. To preserve the
+#'  data and Collect() them as many times as desired, set remove to FALSE. The
+#'  default value is TRUE.
 #'@return A list of merged data array.
 #'
 #'@examples
@@ -72,10 +73,34 @@
 #'
 #'@export
 Collect <- function(startr_exec, wait = TRUE, remove = TRUE) {
+
+  # Parameter checks
   if (!is(startr_exec, 'startR_exec')) {
     stop("Parameter 'startr_exec' must be an object of the class ",
-         "'startR_exec', as returned by Collect(..., wait = FALSE).")
+         "'startR_exec', as returned by Compute(..., wait = FALSE).")
   }
+  if (!tolower(startr_exec$workflow_manager) %in% c('ecflow', 'autosubmit')) {
+    stop("Cannot identify the workflow manager. Check the value of 'startr_exec$workflow_manager', which should be 'ecFlow' or 'Autosubmit'.")
+  }
+  if (!is.logical(wait)) {
+    stop("Parameter 'wait' must be logical.")
+  }
+  if (!is.logical(remove)) {
+    stop("Parameter 'remove' must be logical.")
+  }
+
+  if (tolower(startr_exec$workflow_manager) == 'ecflow') {
+    res <- Collect_ecflow(startr_exec, wait = wait, remove = remove)
+  } else if (tolower(startr_exec$workflow_manager) == 'autosubmit') {
+    res <- Collect_autosubmit(startr_exec, wait = wait, remove = remove)
+  }
+
+  return(res)
+}
+
+
+Collect_ecflow <- function(startr_exec, wait = TRUE, remove = TRUE) {
+
   if (Sys.which('ecflow_client') == '') {
     stop("ecFlow must be installed in order to collect results from a ",
          "Compute() execution.")
@@ -345,4 +370,60 @@ Collect <- function(startr_exec, wait = TRUE, remove = TRUE) {
   #file.remove(paste0(ecflow_output_dir, '/result.Rds'))
   attr(result, 'startR_compute_profiling') <- timings
   result
+}
+
+
+
+Collect_autosubmit <- function(startr_exec, wait = TRUE, remove = TRUE) {
+
+  suite_id <- startr_exec[['suite_id']]
+  chunks <- startr_exec[['chunks']]
+  num_outputs <- startr_exec[['num_outputs']]
+  autosubmit_suite_dir <- startr_exec[['autosubmit_suite_dir']]
+  autosubmit_suite_dir_suite <- paste0(autosubmit_suite_dir, '/STARTR_CHUNKING_', suite_id, '/')
+  remote_autosubmit_suite_dir <- file.path("/esarchive/autosubmit/", suite_id, 'proj')
+  remote_autosubmit_suite_dir_suite <- paste0(remote_autosubmit_suite_dir, '/STARTR_CHUNKING_', suite_id, '/')
+  run_dir <- startr_exec$cluster[['run_dir']]
+
+  done <- FALSE
+  sum_received_chunks <- sum(grepl('.*\\.Rds$', list.files(remote_autosubmit_suite_dir_suite)))
+
+  while (!done) { # If wait, try until it is done
+    if (sum_received_chunks / num_outputs == prod(unlist(chunks))) {
+      done <- TRUE
+
+    } else if (!wait) {
+      stop("Computation in progress...")
+    } else {
+      Sys.sleep(startr_exec$cluster[['polling_period']])
+      message("Computation in progress,  ", sum_received_chunks, "  of ", prod(unlist(chunks)), " chunks are done...\n",
+              "Check status on Autosubmit GUI: https://earth.bsc.es/autosubmitapp/experiment/", suite_id)
+#      Sys.sleep(min(sqrt(attempt), 5))
+    }
+
+  } # while !done
+
+  result <- .MergeChunks(remote_autosubmit_suite_dir, suite_id, remove = remove)
+  if (remove) {
+    .warning("ATTENTION: The source chunks will be removed from the ",
+             "system. Store the result after Collect() ends if needed.")
+    unlink(paste0(autosubmit_suite_dir_suite),
+           recursive = TRUE)
+  }
+
+  # Remove bigmemory objects (e.g., a68h_1_1_1_1_1 and a68h_1_1_1_1_1.desc)
+  # If run_dir is specified, the files are under run_dir; if not, files are under proj/STARTR_CHUNKING_xxxx/
+  if (!is.null(run_dir)) {
+    file.remove(
+      file.path(run_dir,
+        list.files(run_dir)[grepl(paste0("^", suite_id, "_.*"), list.files(run_dir))])
+    )
+  } else {
+    file.remove(
+      file.path(remote_autosubmit_suite_dir_suite,
+        list.files(remote_autosubmit_suite_dir_suite)[grepl(paste0("^", suite_id, "_.*"), list.files(remote_autosubmit_suite_dir_suite))])
+    )
+  }
+
+  return(result)
 }

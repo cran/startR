@@ -1363,7 +1363,10 @@ combine_metadata_picked_vars <- function(return_metadata, picked_vars, picked_co
       sublist_names <- lapply(return_metadata, names)[[kk]]
       if (!is.null(sublist_names)) {
         for (jj in 1:length(sublist_names)) {
-          picked_vars[[kk]][[sublist_names[jj]]] <- return_metadata[[kk]][[jj]]
+          if (!is.null(return_metadata[[kk]][[jj]])) {
+            picked_vars[[kk]] <- c(picked_vars[[kk]], list(return_metadata[[kk]][[jj]]))
+            names(picked_vars[[kk]])[length(picked_vars[[kk]])] <- names(return_metadata[[kk]][jj])
+          }
         }
       }
     }

@@ -19,9 +19,10 @@
 #'@param threads_compute An integer indicating the number of execution threads
 #'  to use for the computation. The default value is 1.
 #'@param cluster A list of components that define the configuration of the 
-#'  machine to be run on. The comoponents vary from the different machines.
-#'  Check \href{https://earth.bsc.es/gitlab/es/startR/}{startR GitLab} for more
-#'  details and examples.
+#'  machine to be run on. The comoponents vary from the different machines. 
+#'  Check 
+#'  \href{https://earth.bsc.es/gitlab/es/startR/-/blob/master/inst/doc/practical_guide.md}{practical guide} 
+#'  for more examples.
 #'  Only needed when the computation is not run locally. The default value is 
 #'  NULL.
 #'@param ecflow_suite_dir A character string indicating the path to a folder in
@@ -51,8 +52,8 @@
 #'  attached as attributes to the returned list of arrays.
 #'
 #'@examples
-#' # ByChunks() is internally used in Compute(), not intended to be used by 
-#' #  users. The example just illustrates the inputs of ByChunks().
+#' # ByChunks_ecflow() is internally used in Compute(), not intended to be used 
+#' # by users. The example just illustrates the inputs of ByChunks_ecflow().
 #' # data_path <- system.file('extdata', package = 'startR')
 #' # path_obs <- file.path(data_path, 'obs/monthly_mean/$var$/$var$_$sdate$.nc')
 #' # sdates <- c('200011', '200012')
@@ -77,18 +78,18 @@
 #' #              output_dims = 'latitude',
 #' #              use_libraries = c('multiApply'),
 #' #              use_attributes = list(data = "Variables"))
-#' #ByChunks(step, data)
+#' #ByChunks_ecflow(step, data)
 #'
 #'@import multiApply
 #'@importFrom methods is
 #'@noRd
-ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
-                     threads_load = 2, threads_compute = 1, 
-                     cluster = NULL, 
-                     ecflow_suite_dir = NULL, 
-                     ecflow_server = NULL, 
-                     silent = FALSE, debug = FALSE,
-                     wait = TRUE) {
+ByChunks_ecflow <- function(step_fun, cube_headers, ..., chunks = 'auto',
+                            threads_load = 1, threads_compute = 1, 
+                            cluster = NULL, 
+                            ecflow_suite_dir = NULL, 
+                            ecflow_server = NULL, 
+                            silent = FALSE, debug = FALSE,
+                            wait = TRUE) {
   # Build object to store profiling timings
   t_begin_total <- Sys.time()
   t_begin_bychunks_setup <- t_begin_total
@@ -181,14 +182,22 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
     if (is.null(names(cluster))) {
       stop("Parameter 'cluster' must be a named list.")
     }
-    if (any(!(names(cluster) %in% c('queue_host', 'queue_type', 'data_dir', 
-                                    'temp_dir', 'lib_dir', 'init_commands', 
-                                    'r_module', 'CDO_module', 
-                                    'ecflow_module', 'node_memory', 
-                                    'cores_per_job', 'job_wallclock', 'max_jobs', 
+    if (any(!(names(cluster) %in% c('queue_host', 'queue_type', 'data_dir',
+                                    'temp_dir', 'lib_dir', 'init_commands',
+                                    'r_module', 'CDO_module', 'autosubmit_module',
+                                    'ecflow_module', 'node_memory',
+                                    'cores_per_job', 'job_wallclock', 'max_jobs',
                                     'extra_queue_params', 'bidirectional',
-                                    'polling_period', 'special_setup')))) {
+                                    'polling_period', 'special_setup', 'expid', 'hpc_user')))) {
+
       stop("Found invalid component names in parameter 'cluster'.")
+    }
+    # Remove ecFlow components
+    redundant_components <- c('autosubmit_module', 'expid', 'hpc_user')
+    if (any(redundant_components %in% names(cluster))) {
+      tmp <- redundant_components[which(redundant_components %in% names(cluster))]
+      .warning(paste0("Cluster component ", paste(tmp, collapse = ','), " not used when ecFlow is the workflow manager."))
+      cluster[[tmp]] <- NULL
     }
     default_cluster[names(cluster)] <- cluster
   }
@@ -258,8 +267,8 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
         stop("The component 'CDO_module' of the parameter 'cluster' must be a character string.")
       }
       if (nchar(cluster[['CDO_module']]) < 1 || grepl(' ', cluster[['CDO_module']])) {
-        warning("The component 'CDO_module' of parameter 'cluster' must have ",
-                " than 1 and only the first element will be used.")
+        .warning(paste0("The component 'CDO_module' of parameter 'cluster' must have ",
+                " than 1 and only the first element will be used."))
       }
       cluster[['r_module']] <- paste(cluster[['r_module']], cluster[['CDO_module']])
     }
@@ -428,8 +437,8 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
                     ". Make sure passwordless ",
                     "access is properly set in both directions."))
     
-    # Copy load_process_save_chunk.R into shared folder
-    chunk_script <- file(system.file('chunking/load_process_save_chunk.R', 
+    # Copy load_process_save_chunk_ecflow.R into shared folder
+    chunk_script <- file(system.file('chunking/ecFlow/load_process_save_chunk_ecflow.R', 
                                      package = 'startR'))
     chunk_script_lines <- readLines(chunk_script)
     close(chunk_script)
@@ -480,10 +489,10 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
                                chunk_script_lines)
     chunk_script_lines <- gsub('^params <- *', paste0('params <- ', paste(deparse(list(...)), collapse = '\n')), 
                                chunk_script_lines)
-    writeLines(chunk_script_lines, paste0(ecflow_suite_dir_suite, '/load_process_save_chunk.R'))
+    writeLines(chunk_script_lines, paste0(ecflow_suite_dir_suite, '/load_process_save_chunk_ecflow.R'))
     
     # Copy Chunk.ecf into shared folder
-    chunk_ecf_script <- file(system.file('chunking/Chunk.ecf',
+    chunk_ecf_script <- file(system.file('chunking/ecFlow/Chunk.ecf',
                                          package = 'startR'))
     chunk_ecf_script_lines <- readLines(chunk_ecf_script)
     close(chunk_ecf_script)
@@ -522,8 +531,8 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
     #    } else {
     #      transfer_back_line <- ''
     #    }
-    chunk_ecf_script_lines <- gsub('^Rscript load_process_save_chunk.R --args \\$task_path insert_indices', 
-                                   paste0('Rscript load_process_save_chunk.R --args $task_path ', paste(ecf_vars, collapse = ' ')),
+    chunk_ecf_script_lines <- gsub('^Rscript load_process_save_chunk_ecflow.R --args \\$task_path insert_indices', 
+                                   paste0('Rscript load_process_save_chunk_ecflow.R --args $task_path ', paste(ecf_vars, collapse = ' ')),
                                    chunk_ecf_script_lines)
     #chunk_ecf_script_lines <- gsub('^include_transfer_back_and_rm', transfer_back_line, chunk_ecf_script_lines)
     writeLines(chunk_ecf_script_lines, paste0(ecflow_suite_dir_suite, '/Chunk.ecf'))
@@ -549,7 +558,7 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
     # Copy queue header into shared folder
     #file.copy(system.file(paste0('chunking/', cluster[['queue_type']], '.h'), package = 'startR'),
     #          ecflow_suite_dir_suite)
-    chunk_queue_header <- file(system.file(paste0('chunking/', cluster[['queue_type']], '.h'), package = 'startR'))
+    chunk_queue_header <- file(system.file(paste0('chunking/ecFlow/', cluster[['queue_type']], '.h'), package = 'startR'))
     chunk_queue_header_lines <- readLines(chunk_queue_header)
     close(chunk_queue_header)
     chunk_queue_header_lines <- gsub('^include_extra_queue_params', 
@@ -558,12 +567,10 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
     writeLines(chunk_queue_header_lines, paste0(ecflow_suite_dir_suite, '/', cluster[['queue_type']], '.h'))
     
     # Copy headers
-    file.copy(system.file('chunking/head.h', package = 'startR'),
+    file.copy(system.file('chunking/ecFlow/head.h', package = 'startR'),
               ecflow_suite_dir_suite)
-    file.copy(system.file('chunking/tail.h', package = 'startR'),
+    file.copy(system.file('chunking/ecFlow/tail.h', package = 'startR'),
               ecflow_suite_dir_suite)
-    #file.copy(system.file('chunking/clean_devshm.sh', package = 'startR'),
-    #          ecflow_suite_dir_suite)
   }
   
   add_line <- function(suite, line, tabs) {
@@ -882,7 +889,8 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
                   ecflow_server[['port']]))
     
     timings[['total']] <- t_begin_total 
-    startr_exec <- list(cluster = cluster, ecflow_server = ecflow_server, 
+    startr_exec <- list(cluster = cluster, ecflow_server = ecflow_server,
+                        workflow_manager = 'ecFlow', 
                         suite_id = suite_id, chunks = chunks, 
                         num_outputs = length(arrays_of_results),
                         ecflow_suite_dir = ecflow_suite_dir, 
@@ -1000,3 +1008,15 @@ ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
   }
   #TODO: check result dimensions match expected dimensions
 }
+
+ByChunks <- function(step_fun, cube_headers, ..., chunks = 'auto',
+                     threads_load = 2, threads_compute = 1,
+                     cluster = NULL,
+                     ecflow_suite_dir = NULL,
+                     ecflow_server = NULL,
+                     silent = FALSE, debug = FALSE,
+                     wait = TRUE) {
+
+ stop(.Deprecated("ByChunks_ecflow"))
+}
+

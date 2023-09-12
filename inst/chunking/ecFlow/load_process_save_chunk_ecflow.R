@@ -37,6 +37,10 @@ t_job_setup <- as.numeric(difftime(t_end_job_setup, t_begin_job_setup, units = '
 
 t_begin_load <- Sys.time()
 data <- vector('list', length(start_calls))
+# Add data names if data input has names
+if (!is.null(names(start_calls_attrs))) {
+  names(data) <- names(start_calls_attrs)
+}
 for (input in 1:length(data)) {
   start_call <- start_calls[[input]]
   call_dims <- names(start_calls_attrs[[input]][['Dimensions']])

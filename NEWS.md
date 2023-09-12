@@ -1,3 +1,9 @@
+# startR v2.3.0 (Release date: 2023-08-31)     
+- Load variable metadata when retreive = F     
+- Change Compute() "threads_load" to 1 to be consistent with documentation      
+- Add Autosubmit as workflow manager 
+- SelectorChecker() to recognize class integer  Task actions 
+
 # startR v2.2.3 (Release date: 2023-06-06)
 - Bugfix in Start(): when using parameter `longitude = 'all'` with transform, there was a missing point for some cases.
 

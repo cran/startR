@@ -19,15 +19,17 @@
 #'  those not required as the target dimension in function Step(). The default
 #'  value is 'auto', which lists all the non-target dimensions and each one has
 #'  one chunk.
-#'@param threads_load An integer indicating the number of execution threads to 
-#'  use for the data retrieval stage. The default value is 1.
-#'@param threads_compute An integer indicating the number of execution threads
-#'  to use for the computation. The default value is 1.
+#'@param threads_load An integer indicating the number of parallel execution
+#'  processes to use for the data retrieval stage. The default value is 1.
+#'@param threads_compute An integer indicating the number of parallel execution
+#'  processes to use for the computation. The default value is 1.
 #'@param cluster A list of components that define the configuration of the 
 #'  machine to be run on. The comoponents vary from the different machines.
 #'  Check \href{https://earth.bsc.es/gitlab/es/startR/-/blob/master/inst/doc/practical_guide.md}{Practical guide on GitLab} for more 
 #'  details and examples. Only needed when the computation is not run locally. 
 #'  The default value is NULL.
+#'@param workflow_manager Can be NULL, 'ecFlow' or 'Autosubmit'. The default is
+#'  'ecFlow'.
 #'@param ecflow_suite_dir A character string indicating the path to a folder in
 #'  the local workstation where to store temporary files generated for the 
 #'  automatic management of the workflow. Only needed when the execution is run
@@ -35,7 +37,15 @@
 #'@param ecflow_server A named vector indicating the host and port of the 
 #'  EC-Flow server. The vector form should be 
 #'  \code{c(host = 'hostname', port = port_number)}. Only needed when the 
-#'  execution is run#'  remotely. The default value is NULL.
+#'  execution is run remotely. The default value is NULL.
+#'@param autosubmit_suite_dir A character string indicating the path to a folder
+#'  where to store temporary files generated for the automatic management of the
+#'  workflow manager. This path should be available in local workstation as well
+#'  as autosubmit machine. The default value is NULL, and a temporary folder 
+#'  under the current working folder will be created.
+#'@param autosubmit_server A character vector indicating the login node of the 
+#'  autosubmit machine. It can be "bscesautosubmit01" or "bscesautosubmit02". 
+#'  The default value is NULL, and the node will be randomly chosen.
 #'@param silent A logical value deciding whether to print the computation 
 #'  progress (FALSE) on the R session or not (TRUE). It only works when the 
 #'  execution runs locally or the parameter 'wait' is TRUE. The default value
@@ -84,11 +94,11 @@
 #'
 #'@importFrom methods is
 #'@export
-Compute <- function(workflow, chunks = 'auto',
-                    threads_load = 1, threads_compute = 1, 
-                    cluster = NULL, ecflow_suite_dir = NULL,
-                    ecflow_server = NULL, silent = FALSE, debug = FALSE,
-                    wait = TRUE) {
+Compute <- function(workflow, chunks = 'auto', workflow_manager = 'ecFlow',
+                    threads_load = 1, threads_compute = 1,
+                    cluster = NULL, ecflow_suite_dir = NULL, ecflow_server = NULL,
+                    autosubmit_suite_dir = NULL, autosubmit_server = NULL,
+                    silent = FALSE, debug = FALSE, wait = TRUE) {
   # Check workflow
   if (!is(workflow, 'startR_cube') & !is(workflow, 'startR_workflow')) {
     stop("Parameter 'workflow' must be an object of class 'startR_cube' as ",
@@ -144,16 +154,42 @@ Compute <- function(workflow, chunks = 'auto',
     if (!all(sapply(workflow$inputs, class) == 'startR_cube')) {
       stop("Workflows with only one step supported by now.")
     }
-    # Run ByChunks with the combined operation
-    res <- ByChunks(step_fun = operation, 
-                    cube_headers = workflow$inputs,
-                    chunks = chunks, 
-                    threads_load = threads_load,
-                    threads_compute = threads_compute,
-                    cluster = cluster, 
-                    ecflow_suite_dir = ecflow_suite_dir,
-                    ecflow_server = ecflow_server,
-                    silent = silent, debug = debug, wait = wait)
+
+    # Run ByChunks with the chosen operation
+    if (!is.null(cluster)) {
+      if (is.null(workflow_manager)) {
+        stop("Specify parameter 'workflow_manager' as 'ecFlow' or 'Autosubmit'.")
+      } else if (!tolower(workflow_manager) %in% c('ecflow', 'autosubmit')) {
+        stop("Parameter 'workflow_manager' can only be 'ecFlow' or 'Autosubmit'.")
+      }
+    } else { # run locally
+      workflow_manager <- 'ecflow'
+    }
+
+    if (tolower(workflow_manager) == 'ecflow') {
+      # ecFlow or run locally
+      res <- ByChunks_ecflow(step_fun = operation,
+                             cube_headers = workflow$inputs,
+                             chunks = chunks,
+                             threads_load = threads_load,
+                             threads_compute = threads_compute,
+                             cluster = cluster,
+                             ecflow_suite_dir = ecflow_suite_dir,
+                             ecflow_server = ecflow_server,
+                             silent = silent, debug = debug, wait = wait)
+    } else {
+      res <- ByChunks_autosubmit(step_fun = operation,
+                      cube_headers = workflow$inputs,
+                      chunks = chunks,
+                      threads_load = threads_load,
+                      threads_compute = threads_compute,
+                      cluster = cluster,
+                      autosubmit_suite_dir = autosubmit_suite_dir,
+                      autosubmit_server = autosubmit_server,
+                      silent = silent, debug = debug, wait = wait)
+
+    } 
+
     # TODO: carry out remaining steps locally, using multiApply
     # Return results
     res

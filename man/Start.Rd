@@ -684,8 +684,8 @@ value is FALSE.}
 \item{num_procs}{An integer of number of processes to be created for the
 parallel execution of the retrieval/transformation/arrangement of the
 multiple involved files in a call to Start(). If set to NULL,
-takes the number of available cores (as detected by detectCores() in 
-the package 'future'). The default value is 1 (no parallel execution).}
+takes the number of available cores (as detected by future::detectCores).
+The default value is 1 (no parallel execution).}
 
 \item{ObjectBigmemory}{a character string to be included as part of the 
 bigmemory object name. This parameter is thought to be used internally by the

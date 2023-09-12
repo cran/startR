@@ -7,11 +7,14 @@
 Compute(
   workflow,
   chunks = "auto",
+  workflow_manager = "ecFlow",
   threads_load = 1,
   threads_compute = 1,
   cluster = NULL,
   ecflow_suite_dir = NULL,
   ecflow_server = NULL,
+  autosubmit_suite_dir = NULL,
+  autosubmit_server = NULL,
   silent = FALSE,
   debug = FALSE,
   wait = TRUE
@@ -28,11 +31,14 @@ those not required as the target dimension in function Step(). The default
 value is 'auto', which lists all the non-target dimensions and each one has
 one chunk.}
 
-\item{threads_load}{An integer indicating the number of execution threads to 
-use for the data retrieval stage. The default value is 1.}
+\item{workflow_manager}{Can be NULL, 'ecFlow' or 'Autosubmit'. The default is
+'ecFlow'.}
 
-\item{threads_compute}{An integer indicating the number of execution threads
-to use for the computation. The default value is 1.}
+\item{threads_load}{An integer indicating the number of parallel execution
+processes to use for the data retrieval stage. The default value is 1.}
+
+\item{threads_compute}{An integer indicating the number of parallel execution
+processes to use for the computation. The default value is 1.}
 
 \item{cluster}{A list of components that define the configuration of the 
 machine to be run on. The comoponents vary from the different machines.
@@ -48,7 +54,17 @@ remotely. The default value is NULL.}
 \item{ecflow_server}{A named vector indicating the host and port of the 
 EC-Flow server. The vector form should be 
 \code{c(host = 'hostname', port = port_number)}. Only needed when the 
-execution is run#'  remotely. The default value is NULL.}
+execution is run remotely. The default value is NULL.}
+
+\item{autosubmit_suite_dir}{A character string indicating the path to a folder
+where to store temporary files generated for the automatic management of the
+workflow manager. This path should be available in local workstation as well
+as autosubmit machine. The default value is NULL, and a temporary folder 
+under the current working folder will be created.}
+
+\item{autosubmit_server}{A character vector indicating the login node of the 
+autosubmit machine. It can be "bscesautosubmit01" or "bscesautosubmit02". 
+The default value is NULL, and the node will be randomly chosen.}
 
 \item{silent}{A logical value deciding whether to print the computation 
 progress (FALSE) on the R session or not (TRUE). It only works when the 
