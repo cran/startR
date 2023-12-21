@@ -4,7 +4,7 @@
 \alias{Collect}
 \title{Collect and merge the computation results}
 \usage{
-Collect(startr_exec, wait = TRUE, remove = TRUE)
+Collect(startr_exec, wait = TRUE, remove = TRUE, on_remote = FALSE)
 }
 \arguments{
 \item{startr_exec}{An R object returned by Compute() when the parameter 'wait'
@@ -25,6 +25,10 @@ received from the HPC after data being collected, as well as the local job
 folder under 'ecflow_suite_dir' or 'autosubmit_suite_dir'. To preserve the
 data and Collect() them as many times as desired, set remove to FALSE. The
 default value is TRUE.}
+
+\item{on_remote}{A logical value deciding to the function is run locally and
+sync the outputs back from HPC (FALSE, default), or it is run on HPC 
+(TRUE).}
 }
 \value{
 A list of merged data array.

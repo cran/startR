@@ -19,7 +19,9 @@
 #'  for multiple returned arrays indicating the dimension names of the function
 #'  output. 
 #'@param use_libraries A vector of character string indicating the R library 
-#'  names to be used in 'fun'. The default value is NULL.
+#'  names to be used in 'fun'. Only used when the jobs are run on HPCs; if the 
+#'  jobs are run locally, load the necessary libraries by \code{library()}
+#'  directly. The default value is NULL.
 #'@param use_attributes One or more lists of vectors of character string 
 #'  indicating the data attributes to be used in 'fun'. The list name should be
 #'  consistent with the list name of 'data' in AddStep(). The default value is 

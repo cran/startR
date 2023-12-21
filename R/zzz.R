@@ -980,7 +980,12 @@ build_work_pieces <- function(work_pieces, i, selectors, file_dims, inner_dims, 
                                    if (x %in% names(depending_file_dims)) {
                                      vector_to_pick <- file_to_load_indices[depending_file_dims[[x]]]
                                    }
-                                   selectors[file_dims][[x]][[vector_to_pick]][file_to_load_indices[x]]
+                                   if (x != found_pattern_dim) {
+                                     selectors[[x]][[vector_to_pick]][file_to_load_indices[x]]
+                                   } else {
+                                     # dat_dim only has one value in each work_piece
+                                     selectors[[x]][[vector_to_pick]]
+                                   }
                                  })
         names(file_selectors) <- file_dims
         work_piece[['file_selectors']] <- file_selectors

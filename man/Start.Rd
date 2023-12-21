@@ -651,7 +651,7 @@ For example, a path pattern could be as follows: \cr
  to recognize files such as \cr
  \code{'/path/to/dataset/precipitation_zzz/19901101_yyy_foo.nc'}).\cr\cr
 Note that each glob expression can only represent one possibility (Start() 
-chooses the first). Because /code{*} is not the tag, which means it cannot
+chooses the first). Because \code{*} is not the tag, which means it cannot
 be a dimension of the output array. Therefore, only one possibility can be
 adopted. For example, if \cr
 \code{'/path/to/dataset/precipitation_*/19901101_*_foo.nc'}\cr
@@ -684,7 +684,7 @@ value is FALSE.}
 \item{num_procs}{An integer of number of processes to be created for the
 parallel execution of the retrieval/transformation/arrangement of the
 multiple involved files in a call to Start(). If set to NULL,
-takes the number of available cores (as detected by future::detectCores).
+takes the number of available cores (as detected by future::availableCores).
 The default value is 1 (no parallel execution).}
 
 \item{ObjectBigmemory}{a character string to be included as part of the 

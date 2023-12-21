@@ -611,14 +611,15 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
     #NOTE: If we ssh to AS VM and run everything there, we don't need to ssh here
     system(sys_commands)
 
-  } else if (gsub("[[:digit:]]", "", Sys.getenv("HOSTNAME")) == "bscearth") {
+   } else {
+#  } else if (gsub("[[:digit:]]", "", Sys.getenv("HOSTNAME")) == "bscearth") {
     # ssh from WS to AS VM to run exp
     as_login <- paste0(Sys.getenv("USER"), '@', autosubmit_server, '.bsc.es')
     sys_commands <- paste0('ssh ', as_login, ' "', sys_commands, '"') #'; exit"')
     system(sys_commands)
 
-  } else {
-      stop("Cannot identify host", Sys.getenv("HOSTNAME"), ". Where to run AS exp?")
+#  } else {
+#      stop("Cannot identify host", Sys.getenv("HOSTNAME"), ". Where to run AS exp?")
   }
 
   # Check the size of tmp/ASLOGS/jobs_failed_status.log. If it is not 0, the jobs failed.    

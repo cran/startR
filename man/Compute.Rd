@@ -35,10 +35,10 @@ one chunk.}
 'ecFlow'.}
 
 \item{threads_load}{An integer indicating the number of parallel execution
-processes to use for the data retrieval stage. The default value is 1.}
+cores to use for the data retrieval stage. The default value is 1.}
 
 \item{threads_compute}{An integer indicating the number of parallel execution
-processes to use for the computation. The default value is 1.}
+cores to use for the computation. The default value is 1.}
 
 \item{cluster}{A list of components that define the configuration of the 
 machine to be run on. The comoponents vary from the different machines.

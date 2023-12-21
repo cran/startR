@@ -674,7 +674,7 @@
 #'  to recognize files such as \cr
 #'  \code{'/path/to/dataset/precipitation_zzz/19901101_yyy_foo.nc'}).\cr\cr
 #'Note that each glob expression can only represent one possibility (Start() 
-#'chooses the first). Because /code{*} is not the tag, which means it cannot
+#'chooses the first). Because \code{*} is not the tag, which means it cannot
 #'be a dimension of the output array. Therefore, only one possibility can be
 #'adopted. For example, if \cr
 #'\code{'/path/to/dataset/precipitation_*/19901101_*_foo.nc'}\cr
@@ -704,7 +704,7 @@
 #'@param num_procs An integer of number of processes to be created for the
 #'  parallel execution of the retrieval/transformation/arrangement of the
 #'  multiple involved files in a call to Start(). If set to NULL,
-#'  takes the number of available cores (as detected by future::detectCores).
+#'  takes the number of available cores (as detected by future::availableCores).
 #'  The default value is 1 (no parallel execution).
 #'@param ObjectBigmemory a character string to be included as part of the 
 #'  bigmemory object name. This parameter is thought to be used internally by the
@@ -1777,6 +1777,18 @@ Start <- function(..., # dim = indices/selectors,
       }
     }
   }
+
+  # Return info about return_vars when dat > 1
+  if (length(dat) > 1 & length(common_return_vars) > 0) {
+    .message("\n", "[ATTENTION]", 
+             paste0("According to parameter 'return_vars', the inner dimensions: ",
+                    paste(names(common_return_vars), collapse = ', '),
+                    ", are common among all the datasets. Please be sure that ",
+                    "this is expected to avoid potential wrong results, and ",
+                    "verify the outputs carefully."),
+             "\n", indent = 1)
+   }
+
 #////////////////////////////////////////////
 
 # This part was above where return_vars is seperated into return_vars and common_return_vars

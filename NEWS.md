@@ -1,8 +1,14 @@
+# startR v2.3.1 (Release date: 2023-12-22)
+- Use Autosubmit as workflow manager on hub 
+- New feature: Collect result by Collect() on HPCs
+- Bugfix: Correct Collect_autosubmit() .Rds files update
+- Bugfix: Collect() correctly recognize the finished chunk (.Rds file) in local ecFlow folder. Prevent neverending Collect() when using `wait = F` in Compute() and Collect() the result later on
+
 # startR v2.3.0 (Release date: 2023-08-31)     
 - Load variable metadata when retreive = F     
 - Change Compute() "threads_load" to 1 to be consistent with documentation      
 - Add Autosubmit as workflow manager 
-- SelectorChecker() to recognize class integer  Task actions 
+- SelectorChecker() to recognize class integer 
 
 # startR v2.2.3 (Release date: 2023-06-06)
 - Bugfix in Start(): when using parameter `longitude = 'all'` with transform, there was a missing point for some cases.
