@@ -734,6 +734,9 @@ If \code{retrieve = TRUE} the involved data is loaded into RAM memory
  components used to build up the paths to each of the files in the data
  sources.
  }
+ \item{PatternDim}{
+ Character string containing the name of the file pattern dimension.
+ }
 If \code{retrieve = FALSE} the involved data is not loaded into RAM memory and
 an object of the class 'startR_header' with the following components is
 returned:\cr
@@ -750,7 +753,7 @@ returned:\cr
  multidimensional array with named dimensions, and potentially with the
  attribute 'variables' with additional auxiliary data.
  }
- \item{Files}{
+ \item{ExpectedFiles}{
  Multidimensonal character string array with named dimensions. Its dimensions
  are the file dimensions (as requested in \dots). Each cell in this array
  contains a path to a file to be retrieved (which may exist or not).
@@ -760,6 +763,9 @@ returned:\cr
  shape as \code{$Files} and \code{$NotFoundFiles}, which contains the
  components used to build up the paths to each of the files in the data
  sources.
+ }
+ \item{PatternDim}{
+ Character string containing the name of the file pattern dimension.
  }
  \item{StartRCall}{
  List of parameters sent to the Start() call, with the parameter

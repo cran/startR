@@ -1,3 +1,10 @@
+# startR v2.4.0 (Release date: 2024-09-10)
+- Allow chunking along inner dimensions that go across file dimensions
+- Allow more than one file dimension to be specified in "metadata_dims"
+- Add check and warning for when special wildcard "$var$" is missing in the path
+- Bugfix: Start() retrieve correct time steps when time is across file dimension and the time steps of the first files are skipped
+- Bugfix: Generate correct file paths when a file dimension has multiple depending dimensions
+
 # startR v2.3.1 (Release date: 2023-12-22)
 - Use Autosubmit as workflow manager on hub 
 - New feature: Collect result by Collect() on HPCs

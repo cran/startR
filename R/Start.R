@@ -750,6 +750,9 @@
 #'  components used to build up the paths to each of the files in the data
 #'  sources.
 #'  }
+#'  \item{PatternDim}{
+#'  Character string containing the name of the file pattern dimension.
+#'  }
 #'If \code{retrieve = FALSE} the involved data is not loaded into RAM memory and
 #'an object of the class 'startR_header' with the following components is
 #' returned:\cr
@@ -766,7 +769,7 @@
 #'  multidimensional array with named dimensions, and potentially with the
 #'  attribute 'variables' with additional auxiliary data.
 #'  }
-#'  \item{Files}{
+#'  \item{ExpectedFiles}{
 #'  Multidimensonal character string array with named dimensions. Its dimensions
 #'  are the file dimensions (as requested in \dots). Each cell in this array
 #'  contains a path to a file to be retrieved (which may exist or not).
@@ -776,6 +779,9 @@
 #'  shape as \code{$Files} and \code{$NotFoundFiles}, which contains the
 #'  components used to build up the paths to each of the files in the data
 #'  sources.
+#'  }
+#'  \item{PatternDim}{
+#'  Character string containing the name of the file pattern dimension.
 #'  }
 #'  \item{StartRCall}{
 #'  List of parameters sent to the Start() call, with the parameter
@@ -874,7 +880,6 @@ Start <- function(..., # dim = indices/selectors,
   if (!merge_across_dims & merge_across_dims_narm) {
     merge_across_dims_narm <- FALSE
   }
-  
   # Leave alone the dimension parameters in the variable dim_params
   dim_params <- rebuild_dim_params(dim_params, merge_across_dims,
                                    inner_dims_across_files)
@@ -887,6 +892,12 @@ Start <- function(..., # dim = indices/selectors,
   found_pattern_dim <- found_pattern_dims(pattern_dims, dim_names, var_params,
                                           dim_params, dim_reorder_params)
 
+  # Check if file pattern contains '$var$' substring
+  if (any(!grepl("$var$", dim_params[[found_pattern_dim]], fixed = TRUE))) {
+    .warning(paste("The special wildcard '$var$' is not present in the file",
+                   "path. This might cause Start() to fail if it cannot parse",
+                   "the inner dimensions in all the files."))
+  }
   # Check all *_reorder are NULL or functions, and that they all have 
   # a matching dimension param.
   i <- 1
@@ -954,15 +965,13 @@ Start <- function(..., # dim = indices/selectors,
     metadata_dims <- c(pattern_dims, metadata_dims[-which(metadata_dims == pattern_dims)])
   }
   # Check if metadata_dims has more than 2 elements
-  if ((metadata_dims[1] == pattern_dims & length(metadata_dims) > 2)) {
-    .warning(paste0("Parameter 'metadata_dims' has too many elements which serve repetitive ",
-                    "function. Keep '", metadata_dims[1], "' and '", metadata_dims[2], "' only."))
-    metadata_dims <- metadata_dims[1:2]
-  } else if (!(pattern_dims %in% metadata_dims) & length(metadata_dims) > 1) {
-    .warning(paste0("Parameter 'metadata_dims' has too many elements which serve repetitive ",
-                    "function. Keep '", metadata_dims[1], "' only."))
-    metadata_dims <- metadata_dims[1]
-  }
+  if ((metadata_dims[1] == pattern_dims & length(metadata_dims) > 2) ||
+      (!(pattern_dims %in% metadata_dims) & length(metadata_dims) > 1)) {
+    .warning(paste0("Parameter 'metadata_dims' contains some elements which",
+                    "might serve a repetitive purpose: ",
+                    metadata_dims[which(metadata_dims != pattern_dims)],
+                    ". This could impact the performance of Start()."))
+  }                 
 
   # Once the pattern dimension with dataset specifications is found,
   # the variable 'dat' is mounted with the information of each
@@ -2492,6 +2501,10 @@ Start <- function(..., # dim = indices/selectors,
             }
             # Find the largest length of each time step
             inner_dim_lengths <- do.call(pmax, inner_dim_lengths_cat)
+            ## NOTE: NA values can be present if the size of a depending 
+            ## dimension varies along its depended dim. Removing them allows
+            ## retrieval of the common indices. Could cause other issues?
+            inner_dim_lengths <- inner_dim_lengths[which(!is.na(inner_dim_lengths))]
           }
 
           fri <- first_round_indices <- NULL
@@ -2768,10 +2781,10 @@ Start <- function(..., # dim = indices/selectors,
                       !is.null(dim_reorder_params[[inner_dim]])) {
                     if ('circular' %in% names(attributes(dim_reorder_params[[inner_dim]]))) {
                       is_circular_dim <- attr(dim_reorder_params[[inner_dim]], "circular")
-                    if (is_circular_dim & is.list(sub_array_of_selectors)) {
-                      tmp <- dim_reorder_params[[inner_dim]](unlist(sub_array_of_selectors))$ix
-                      goes_across_prime_meridian <-  tmp[1] > tmp[2]
-                    }
+                      if (is_circular_dim & is.list(sub_array_of_selectors)) {
+                        tmp <- dim_reorder_params[[inner_dim]](unlist(sub_array_of_selectors))$ix
+                        goes_across_prime_meridian <-  tmp[1] > tmp[2]
+                      }
                     }
                   }
 
@@ -2918,7 +2931,7 @@ Start <- function(..., # dim = indices/selectors,
                       sub_array_of_indices[[1]] <- vect[tmp[1]]
                       sub_array_of_indices[[2]] <- vect[tmp[length(tmp)]]
                     }
-                 }
+                  }
                   # The sub_array_of_indices now contains numeric indices of the values to be taken by each chunk.
                   #////////////////////////////////////////////////////////////
 
@@ -3195,10 +3208,12 @@ Start <- function(..., # dim = indices/selectors,
                   }
                 }
                 # If "<inner_dim>_across = <crossed_file_dim> + merge_across_dims = FALSE + chunk over <inner_dim>", return error because this instance is not logically correct.
-                if (chunks[[inner_dim]]["n_chunks"] > 1 & inner_dim %in% inner_dims_across_files) {
+                if (chunks[[inner_dim]]["n_chunks"] > 1 & inner_dim %in% inner_dims_across_files &
+                    merge_across_dims == FALSE) {
                   stop("Chunk over dimension '", inner_dim, "' is not allowed because '",
                        inner_dim, "' is across '",
-                       names(inner_dims_across_files)[which(inner_dim %in% inner_dims_across_files)], "'.")
+                       names(inner_dims_across_files)[which(inner_dim %in% inner_dims_across_files)],
+                       "' and 'merge_across_dims' is set to FALSE'.")
                 }
 
                 if (inner_dim %in% names(dim(sub_array_of_selectors))) {
@@ -3273,8 +3288,11 @@ Start <- function(..., # dim = indices/selectors,
                       indices_chunk <- c(indices_chunk, rep(item, length(tmp) - length(indices_chunk)))
                     }
                     sub_array_of_indices_by_file <- split(sub_array_of_indices, indices_chunk)
-                    for (item in 2:length(sub_array_of_indices_by_file)) {
-                      sub_array_of_indices_by_file[[item]] <- sub_array_of_indices_by_file[[item]] - cumsum(inner_dim_lengths)[item - 1]
+                    for (item in names((sub_array_of_indices_by_file))) {
+                      # If item is 1, cumsum(inner_dim_lengths)[item - 1] returns numeric(0)
+                      if (as.numeric(item) > 1) {
+                        sub_array_of_indices_by_file[[item]] <- sub_array_of_indices_by_file[[item]] - cumsum(inner_dim_lengths)[as.numeric(item) - 1]
+                      }
                     }
                     transformed_indices <- unlist(sub_array_of_indices_by_file, use.names = FALSE)
                   }

@@ -62,7 +62,6 @@ NcDataReader <- function(file_path = NULL, file_object = NULL,
   if (is.null(file_to_read)) {
     return(NULL)
   }
-
   var_requested <- is.null(inner_indices)
 
   drop_var_dim <- FALSE

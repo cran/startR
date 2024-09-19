@@ -151,7 +151,7 @@ rebuild_dim_params <- function(dim_params, merge_across_dims,
 
 # Look for chunked dims
 look_for_chunks <- function(dim_params, dim_names) {
-    chunks <- vector('list', length(dim_names))
+  chunks <- vector('list', length(dim_names))
   names(chunks) <- dim_names
   for (dim_name in dim_names) {
     if (!is.null(attr(dim_params[[dim_name]], 'chunk'))) {
@@ -380,6 +380,16 @@ find_ufd_value <- function(undefined_file_dims, dat, i, replace_values,
     }
     if (u_file_dim %in% unlist(depending_file_dims)) {
       depending_dims <- names(depending_file_dims)[which(sapply(depending_file_dims, function(x) u_file_dim %in% x))]
+      replace_values[depending_dims] <- rep('*', length(depending_dims))
+    }
+    # If u_file_dim depends on the same depended dimension as another depending
+    # dimension, then the value of the depending dim should be replaced with '*'
+    # to avoid only the first value being used, which can result in the wrong
+    # path specification.
+    other_depending_file_dims <- depending_file_dims[-which(names(depending_file_dims) == u_file_dim)]
+    if (length(depending_file_dims) > 1 && 
+        any(unlist(other_depending_file_dims) == depended_dim)) {
+      depending_dims <- names(other_depending_file_dims)[which(other_depending_file_dims == depended_dim)]
       replace_values[depending_dims] <- rep('*', length(depending_dims))
     }
     for (j in 1:length(depended_dim_values)) {
@@ -1021,7 +1031,6 @@ build_work_pieces <- function(work_pieces, i, selectors, file_dims, inner_dims, 
     }
     j <- j + 1
   }
-
   return(work_pieces)
 }
 
