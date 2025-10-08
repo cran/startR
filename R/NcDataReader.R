@@ -43,8 +43,9 @@
 #'                            first_round_indices, synonims)
 #'@seealso \code{\link{NcOpener}} \code{\link{NcDimReader}} 
 #'  \code{\link{NcCloser}} \code{\link{NcVarReader}}
-#'@import easyNCDF PCICt
+#'@import easyNCDF ClimProjDiags
 #'@export
+
 NcDataReader <- function(file_path = NULL, file_object = NULL, 
                          file_selectors = NULL, inner_indices = NULL,
                          synonims) {
@@ -303,8 +304,8 @@ NcDataReader <- function(file_path = NULL, file_object = NULL,
                 result_vec[result_i] <- tmp
               }
               # Transfer the strings to time class
-              new_array <- PCICt::as.PCICt(result_vec, cal = 'gregorian')
-              new_array <- suppressWarnings(PCICt::as.POSIXct.PCICt(new_array, tz = "UTC"))
+              new_array <- ClimProjDiags::as.PCICt(result_vec, cal = 'gregorian')
+              new_array <- suppressWarnings(ClimProjDiags::as.POSIXct.PCICt(new_array, tz = "UTC"))
 
 #            if (calendar == 'gregorian') {
 #              # Find how many years + months 
@@ -373,8 +374,8 @@ NcDataReader <- function(file_path = NULL, file_object = NULL,
           }
 
           if (!(units %in% c('month', 'months') & calendar == 'gregorian')) {
-            new_array <- PCICt::as.PCICt(result, cal = calendar, origin = parts[2])[]
-            new_array <- suppressWarnings(PCICt::as.POSIXct.PCICt(new_array, tz = "UTC"))
+            new_array <- ClimProjDiags::as.PCICt(result, cal = calendar, origin = parts[2])[]
+            new_array <- suppressWarnings(ClimProjDiags::as.POSIXct.PCICt(new_array, tz = "UTC"))
           }
           #new_array <- seq(as.POSIXct(parts[2]), 
           #                  length = max(result, na.rm = TRUE) + 1, 

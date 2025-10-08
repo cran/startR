@@ -1,3 +1,24 @@
+# startR v3.0.0 (Release date: 2025-10-08)
+-￼Remove PCICt dependency and replace with ClimProjDiags::as.PCICt()
+- startR now requires ClimProjDiags >= 0.3.4
+- Compute(): Add bscesautosubmit03 and bscesautosubmit04 as accepted AS machines !254 (merged)￼
+-￼Compute(): New parameter `run_dir` to allow Compute() to run on MN5 and CTE-AMD when using Autosubmit #212 (closed) !254 (merged)￼
+-￼Fix Start() check for undefined inner dimensions when there are multiple undefined inner dims !250 (merged)￼
+-￼Start() bugfix: Error when splitting multiselected dimension that is across files￼
+
+# startR v2.5.0 (Release date: 2025-04-23)
+- Compute(): New `special_setup = 'nord4'`; update outdated examples to run on Nord4
+- Compute(): Add support for conda environments
+-￼Compute(): Meaningful error message when trying to chunk along 'dat'
+- Start(): Improve error message about dimensions not found in files
+- Bugfix: Start() sometimes returns different latitudes for different variables
+- Bugfix in￼ByChunks(): Make 'autosubmit expid' command consistent with 'autosubmit create' and 'autosubmit run'
+-￼Documentation: Correct Use Case 1.3: update file paths and Compute() instructions
+- Documentation:￼Correct Use Cases 1.13 and 2.6: fix error in generation of sdate and time arrays
+- Documentation: Update practical guide and use case examples to run on Nord4
+-￼Add CONTRIBUTING.Md file
+
+
 # startR v2.4.0 (Release date: 2024-09-10)
 - Allow chunking along inner dimensions that go across file dimensions
 - Allow more than one file dimension to be specified in "metadata_dims"

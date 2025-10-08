@@ -12,3 +12,32 @@ Platforms:
     CUSTOM_DIRECTIVES:  # "['#SBATCH --exclusive']" "['#SBATCH --constraint=medmem']"
 #    MAX_WALLCLOCK: '48:00'
 #Q: ARE THESE SETTING CORRECT?
+  mn5:
+    TYPE: slurm
+    HOST: glogin1.bsc.es
+    PROJECT: bsc32
+    USER:
+    SERIAL_QUEUE: gp_debug
+    QUEUE: gp_bsces
+    SCRATCH_DIR: /gpfs/scratch/
+    TEMP_DIR: ''
+    ADD_PROJECT_TO_HOST: "false"
+    CUSTOM_DIRECTIVES: 
+  amd:
+    TYPE: slurm
+    HOST: amdlogin1.bsc.es
+    PROJECT: bsc32
+    USER:
+    SCRATCH_DIR: /gpfs/scratch/
+    TEMP_DIR: ''
+    ADD_PROJECT_TO_HOST: "false"
+    CUSTOM_DIRECTIVES:
+  nord4:
+    TYPE: SLURM
+    HOST: n4login1.bsc.es
+    PROJECT: bsc32
+    ADD_PROJECT_TO_HOST: "false"
+    USER: 
+    SCRATCH_DIR: /gpfs/scratch/
+    QUEUE: bsc_es
+    CUSTOM_DIRECTIVES: 

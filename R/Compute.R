@@ -155,6 +155,12 @@ Compute <- function(workflow, chunks = 'auto', workflow_manager = 'ecFlow',
       stop("Workflows with only one step supported by now.")
     }
 
+    if (any(names(chunks) == attr(workflow$inputs$input1, "PatternDim"))) {
+      stop(paste0("Chunking along the pattern dimension ",
+                  attr(workflow$inputs$input1, "PatternDim"),
+                  " is not allowed for now."))
+    }
+
     # Run ByChunks with the chosen operation
     if (!is.null(cluster)) {
       if (is.null(workflow_manager)) {

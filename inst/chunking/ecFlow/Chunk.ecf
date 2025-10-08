@@ -3,6 +3,7 @@ include_queue_header
 
 date --rfc-3339=seconds > %REMOTE_ECF_HOME%/%ECF_NAME%.setup_time
 
+include_special_setup
 include_init_commands
 %include "./head.h"
 

@@ -20,7 +20,7 @@
 #'@param threads_compute An integer indicating the number of execution threads
 #'  to use for the computation. The default value is 1.
 #'@param cluster A list of components that define the configuration of the 
-#'  machine to be run on. The comoponents vary from different machines. Check
+#'  machine to be run on. The components vary for different machines. Check
 #'  \href{https://earth.bsc.es/gitlab/es/startR/-/blob/master/inst/doc/practical_guide.md}{practical guide} 
 #'  for more details and examples. 
 #'@param autosubmit_suite_dir A character string indicating the path to a folder
@@ -29,8 +29,9 @@
 #'  as autosubmit machine. The default value is NULL, and a temporary folder 
 #'  under the current working folder will be created.
 #'@param autosubmit_server A character vector indicating the login node of the 
-#'  autosubmit machine. It can be "bscesautosubmit01" or "bscesautosubmit02". 
-#'  The default value is NULL, and the node will be randomly chosen.
+#'  autosubmit machine. It can be "bscesautosubmit03" or "bscesautosubmit04".
+#'  If NULL, Autosubmit will be run locally on the current machine.
+#'  The default value is NULL.
 #'@param silent A logical value deciding whether to print the computation 
 #'  progress (FALSE) on the R session or not (TRUE). It only works when the 
 #'  execution runs locally or the parameter 'wait' is TRUE. The default value
@@ -80,6 +81,7 @@
 #' #ByChunks_autosubmit(step, data)
 #'
 #'@import multiApply
+#'@import stringr
 #'@importFrom methods is
 #'@noRd
 ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
@@ -164,11 +166,10 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
 
   ## autosubmit_server
   if (!is.null(autosubmit_server)) {
-    if (!autosubmit_server %in% c('bscesautosubmit01', 'bscesautosubmit02')) {
-      stop("Parameter 'autosubmit_server' must be one existing Autosubmit machine login node, 'bscesautosubmit01' or 'bscesautosubmit02'.")
+    if (!autosubmit_server %in% c('bscesautosubmit03', 'bscesautosubmit04')) {
+      stop("Parameter 'autosubmit_server' must be one existing Autosubmit ",
+           "machine login node, 'bscesautosubmit03' or 'bscesautosubmit04'.")
     }
-  } else {
-    autosubmit_server <- paste0('bscesautosubmit0', sample(1:2, 1))
   }
 
   ## silent
@@ -193,12 +194,13 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
   default_cluster <- list(queue_host = NULL,
 #                          queue_type = 'slurm',
                           data_dir = NULL,
-#                          temp_dir = NULL,
+                          temp_dir = NULL,
                           lib_dir = NULL,
                           init_commands = list(''),
                           r_module = 'R',
                           CDO_module = NULL,
                           autosubmit_module = 'autosubmit',
+                          conda_env = NULL,
                           node_memory = NULL,  # not used
                           cores_per_job = NULL,
                           job_wallclock = '01:00:00',
@@ -216,7 +218,7 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
   if (any(!(names(cluster) %in% c('queue_host', 'queue_type', 'data_dir', 
                                   'temp_dir', 'lib_dir', 'init_commands', 
                                   'r_module', 'CDO_module', 'autosubmit_module', 
-                                  'ecflow_module', 'node_memory', 
+                                  'ecflow_module', 'conda_env', 'node_memory', 
                                   'cores_per_job', 'job_wallclock', 'max_jobs', 
                                   'extra_queue_params', 'bidirectional',
                                   'polling_period', 'special_setup', 'expid', 'hpc_user',
@@ -236,10 +238,21 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
   cluster <- default_cluster
 
   ### queue_host 
-  support_hpcs <- c('local', 'nord3') # names in platforms.yml
+  support_hpcs <- c('local', 'nord3', 'nord4', 'amd', 'mn5') # names in platforms.yml
+  hostnames <- list(local = "",
+                    nord3 = "nord4.bsc.es",
+                    nord4 = "n4login1.bsc.es",
+                    amd = "amdlogin1.bsc.es",
+                    mn5 = "glogin1.bsc.es")
   if (is.null(cluster$queue_host) || !cluster$queue_host %in% support_hpcs) {
-    stop("Cluster component 'queue_host' must be one of the follows: ", 
+    stop("Cluster component 'queue_host' must be one of the following: ", 
          paste(support_hpcs, collapse = ','), '.')
+  }
+  ### hostname
+  if (is.null(cluster$hostname)) {
+    cluster$hostname <- hostnames[[cluster$queue_host]]
+  } else {
+    warning("Taking user-defined hostname for HPC platform.")
   }
 
   ### data_dir
@@ -266,12 +279,14 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
          "character strings.")
   }
   ### r_module
-  if (!is.character(cluster[['r_module']])) {
-    stop("The component 'r_module' of the parameter 'cluster' must be a character string.")
-  }
-  if ((nchar(cluster[['r_module']]) < 1) || (grepl(' ', cluster[['r_module']]))) {
-    stop("The component 'r_module' of the parameter 'cluster' must have at least one character ",
-         "and contain no blank spaces.")
+  if (!is.null(cluster[['r_module']])) {
+    if (!is.character(cluster[['r_module']])) {
+      stop("The component 'r_module' of the parameter 'cluster' must be a character string.")
+    }
+    if ((nchar(cluster[['r_module']]) < 1) || (grepl(' ', cluster[['r_module']]))) {
+      stop("The component 'r_module' of the parameter 'cluster' must have at least one character ",
+           "and contain no blank spaces.")
+    }
   }
   ### CDO_module
   if (!is.null(cluster[['CDO_module']])) {
@@ -279,14 +294,41 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
       stop("The component 'CDO_module' of the parameter 'cluster' must be a character string.")
     }
     if (nchar(cluster[['CDO_module']]) < 1 || grepl(' ', cluster[['CDO_module']])) {
-      warning("The component 'CDO_module' of parameter 'cluster' must have ",
+      warning("The component 'CDO_module' of parameter 'cluster' is longer ",
               " than 1 and only the first element will be used.")
     }
     cluster[['r_module']] <- paste(cluster[['r_module']], cluster[['CDO_module']])
   }
+  ### conda environment
+  if (!is.null(cluster[['conda_env']])) {
+    if (!is.character(cluster[['conda_env']])) {
+      stop("The component 'conda_env' of the parameter 'cluster' must be a character string.")
+    }
+    if (nchar(cluster[['conda_env']]) < 1 || grepl(' ', cluster[['conda_env']])) {
+      warning("The component 'conda_env' of parameter 'cluster' must have at ",
+              "least one character and contain no blank spaces.")
+    }
+    if (!is.null(cluster[['r_module']])) {
+      warning("Both 'conda_env' and 'r_module' cluster components have been ",
+              "specified. 'conda_env' will be used.")
+    }
+  } else {
+    cluster[['conda_env']] <- NULL
+  }
   ### autosubmit_module
   if (!is.character(cluster[['autosubmit_module']])) {
     stop("The component 'autosubmit_module' of the parameter 'cluster' must be a character string.")
+  }
+  ### autosubmit_version
+  if (!is.null(cluster[['autosubmit_version']])) {
+    if (!is.character(cluster[['autosubmit_version']])) {
+      stop("The component 'autosubmit_version' of the parameter 'cluster' must be a character string.")
+    }
+  } else {
+    cluster[['autosubmit_version']] <- stringr::str_extract(cluster['autosubmit_module'],
+                                                            "(?<=/)(.+)(?=\\-foss)")
+    warning("The component 'autosubmit_version' has not been provided. It will ",
+            "be parsed from 'autosubmit_module'.")
   }
   ### cores_per_job
   if (is.null(cluster[['cores_per_job']])) {
@@ -321,18 +363,24 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
     stop("The component 'polling_period' of the parameter 'cluster' must be numeric.")
   }
   cluster[['polling_period']] <- round(cluster[['polling_period']])
-  ### special_setup
-  if (!(cluster[['special_setup']] %in% c('none', 'marenostrum4'))) {
+  if (is.null(cluster[['special_setup']])) {
+    cluster[['special_setup']] <- 'none'
+  }
+  if (!(cluster[['special_setup']] %in% c('none', 'marenostrum4', 'nord4'))) {
     stop("The value provided for the component 'special_setup' of the parameter ",
          "'cluster' is not recognized.")
   }
   ### expid
   as_module <- cluster[['autosubmit_module']]
   if (is.null(cluster[['expid']])) {
-    text <- system(
-      paste0("module load ", as_module, "; ",
-             "autosubmit expid -H local -d 'startR computation'"),
-    intern = T)
+    sys_commands <- paste0("module load ", as_module, "; ",
+                           "autosubmit expid -H local -d 'startR computation'")
+    if (!is.null(autosubmit_server)) {
+      as_login <- paste0(Sys.getenv("USER"), '@', autosubmit_server, '.bsc.es')
+      sys_commands <- paste0('ssh ', as_login, ' "', sys_commands, '"')
+    }
+
+    text <- system(sys_commands, intern = TRUE)
     cluster[['expid']] <- strsplit(
                             text[grep("The new experiment", text)],
                             "\"")[[1]][2]
@@ -353,11 +401,16 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
     stop("Cluster component 'hpc_user' must be a character string.")
   }
   ### run_dir
+  is_autosubmit_suite_dir_shared <- TRUE
   if (!is.null(cluster$run_dir)) {
     if (!dir.exists(cluster$run_dir)) {
-      stop("Cluster component 'run_dir' ", cluster$run_dir," is not found.")
+      warning("Cluster component 'run_dir' ", cluster$run_dir, " not found.",
+              " It will be created in the remote cluster.")
+    is_autosubmit_suite_dir_shared <- FALSE
     }
   }
+
+
 
 #==============================================
 
@@ -369,9 +422,13 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
     stop("Could not find or create the directory in  parameter 'autosubmit_suite_dir'.")
   }
 
-  remote_autosubmit_suite_dir <- file.path("/esarchive/autosubmit/", suite_id, 'proj')
+  if (!is.null(cluster[['run_dir']])) {
+    remote_autosubmit_suite_dir <- cluster[['run_dir']]
+  } else {
+    remote_autosubmit_suite_dir <- file.path("/esarchive/autosubmit/", suite_id, 'proj')
+  }
   remote_autosubmit_suite_dir_suite <- paste0(remote_autosubmit_suite_dir, '/STARTR_CHUNKING_', suite_id, '/')
-
+  cluster[['run_dir']] <- remote_autosubmit_suite_dir_suite
   
   # Work out chunked dimensions and target dimensions
   all_dims <- lapply(cube_headers, attr, 'Dimensions')
@@ -530,6 +587,13 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
 
   # Modify conf files from template and rewrite to /esarchive/autosubmit/expid/conf/
   write_autosubmit_confs(chunks, cluster, autosubmit_suite_dir)
+
+  if (!is_autosubmit_suite_dir_shared) {
+    system(paste0("ssh ", cluster[['hpc_user']], "@", cluster[['hostname']], 
+                  " 'mkdir -p ", remote_autosubmit_suite_dir, "'; rsync -r ",
+                  autosubmit_suite_dir, "/. ", cluster[['hpc_user']], "@", cluster[['hostname']],
+                  ":", remote_autosubmit_suite_dir, " ; sleep 10"))
+  }
   
   # Iterate through chunks
   chunk_array <- array(1:prod(unlist(chunks)), dim = (unlist(chunks)))
@@ -561,7 +625,7 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
     for (cube_header in 1:length(cube_headers)) {
       expected_files <- attr(cube_headers[[cube_header]], 'ExpectedFiles')
       #files_to_check <- c(files_to_check, expected_files)
-      #if (cluster[['special_setup']] == 'marenostrum4') {
+      #if (cluster[['special_setup']] == 'gpfs') {
       #  expected_files <- paste0('/gpfs/archive/bsc32/', expected_files)
       #}
       files_to_send <- c(files_to_send, expected_files)
@@ -572,6 +636,13 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
     if (cluster[['special_setup']] == 'marenostrum4') {
       file_spec <- paste(paste0("/gpfs/archive/bsc32/", 
                                 files_to_send), collapse = ' ')
+      ## TODO: Use transfer machine?
+      # system(paste0("ssh bsc032762@transfer1.bsc.es 'mkdir -p remote_data_dir,",
+      #               ' ; rsync -Rrav ', '\'', file_spec, '\' "', remote_data_dir, '/"',
+      #               " ; sleep 10 '"))
+
+      ## TODO:
+      ## This bit may need to be changed
       system(paste0("ssh ", cluster[['queue_host']], " 'mkdir -p ", remote_data_dir, 
                     ' ; module load transfer ; cd ', remote_autosubmit_suite_dir_suite,
                     ' ; dtrsync -Rrav ', '\'', file_spec, '\' "', remote_data_dir, '/"',
@@ -600,26 +671,24 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
   }
   time_begin_first_chunk <- Sys.time()
   sys_commands <- paste0("module load ", as_module, "; ",
-                         "autosubmit create ", suite_id, " -np; ",
+                         "autosubmit create ", suite_id, " -v -np; ",
                          "autosubmit refresh ", suite_id, "; ")
   if (wait) {
     sys_commands <- paste0(sys_commands, "autosubmit run ", suite_id)
   } else {
     sys_commands <- paste0(sys_commands, "nohup autosubmit run ", suite_id, " >/dev/null 2>&1 &") # disown?
   }
-  if (gsub('[[:digit:]]', "", Sys.getenv('HOSTNAME')) == 'bscesautosubmit') {
-    #NOTE: If we ssh to AS VM and run everything there, we don't need to ssh here
+  # Execute system commands locally or remotely
+  if ((is.null(autosubmit_server)) || 
+      (gsub('[[:digit:]]', "", Sys.getenv('HOSTNAME')) == 'bscesautosubmit')) {
+    # If autosubmit_server is NULL or we are already on bscesautosubmit0x
     system(sys_commands)
 
    } else {
-#  } else if (gsub("[[:digit:]]", "", Sys.getenv("HOSTNAME")) == "bscearth") {
-    # ssh from WS to AS VM to run exp
+    # ssh from local machine to AS VM to run exp
     as_login <- paste0(Sys.getenv("USER"), '@', autosubmit_server, '.bsc.es')
     sys_commands <- paste0('ssh ', as_login, ' "', sys_commands, '"') #'; exit"')
     system(sys_commands)
-
-#  } else {
-#      stop("Cannot identify host", Sys.getenv("HOSTNAME"), ". Where to run AS exp?")
   }
 
   # Check the size of tmp/ASLOGS/jobs_failed_status.log. If it is not 0, the jobs failed.    
@@ -628,10 +697,13 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
     # Remove bigmemory objects (e.g., a68h_1_1 and a68h_1_1.desc) if they exist
     # If run_dir is specified, the files are under run_dir; if not, files are under proj/STARTR_CHUNKING_xxxx/
     if (!is.null(cluster[['run_dir']])) {
-      file.remove(
-        file.path(cluster[['run_dir']],
-          list.files(cluster[['run_dir']])[grepl(paste0("^", suite_id, "_.*"), list.files(cluster[['run_dir']]))])
-      )
+      if (is_autosubmit_suite_dir_shared) {
+        file.remove(
+          file.path(cluster[['run_dir']],
+            list.files(cluster[['run_dir']])[grepl(paste0("^", suite_id, "_.*"), list.files(cluster[['run_dir']]))])
+        )
+      }
+      ## TODO: Remove files if run_dir is not in esarchive
     } else {
       file.remove(
         file.path(remote_autosubmit_suite_dir_suite,
@@ -651,8 +723,11 @@ ByChunks_autosubmit <- function(step_fun, cube_headers, ..., chunks = 'auto',
   class(startr_exec) <- 'startR_exec'
 
   if (wait) {
-    result <- Collect(startr_exec, wait = TRUE, remove = T)
-   .message("Computation ended successfully.")
+    result <- Collect(startr_exec,
+                      wait = TRUE,
+                      remove = TRUE,
+                      on_remote = !is_autosubmit_suite_dir_shared)
+    .message("Computation ended successfully.")
     return(result)
 
   } else {

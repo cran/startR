@@ -91,7 +91,7 @@ SelectorChecker <- function(selectors, var = NULL, return_indices = TRUE,
           }
         } else if (is.numeric(selectors[[i]])) {
           if (is.numeric(var)) {
-            
+            var <- signif(var)
             tol <- 0
             if (!is.null(tolerance)) {
               if (!is(tolerance, "numeric")) {
@@ -99,7 +99,6 @@ SelectorChecker <- function(selectors, var = NULL, return_indices = TRUE,
               }
               tol <- tolerance
             }
-            
             val <- selectors[[i]]
             
             if (i == 1) {

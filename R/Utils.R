@@ -885,6 +885,7 @@ write_autosubmit_bash <- function(chunks, cluster, autosubmit_suite_dir) {
     chunk_args[2, ] <- paste0('%JOBS.CHUNK_', n_chunk, '.', chunk_names, '_N%')
     chunk_args <- paste0('(', paste(c(chunk_args), collapse = ' '), ')')
 
+
     bash_script_template <- file(system.file('chunking/Autosubmit/startR_autosubmit.sh',
                                  package = 'startR'))
     bash_script_lines <- readLines(bash_script_template)
@@ -893,15 +894,47 @@ write_autosubmit_bash <- function(chunks, cluster, autosubmit_suite_dir) {
     # Rewrite chunk_args=
     bash_script_lines <- gsub('^chunk_args=*', paste0('chunk_args=', chunk_args),
                               bash_script_lines)
-    # Include init commands 
+    # Include Nord4 Singularity wrapper special setup
+    special_setup_commands <- list("")
+    if (cluster[['special_setup']] == "nord4") {
+      if ('conda_env' %in% names(cluster)) {
+        special_setup_commands <- list(paste0("module load nord3-singu \n",
+                                              "module load bsc/current \n",
+                                              "module use /gpfs/projects/bsc32/software/suselinux/11/modules/all \n",
+                                              "unset PYTHONSTARTUP \n",
+                                              "alias ecflow_client='nord3_singu_es ecflow_client' \n",
+                                              "shopt -s expand_aliases \n"))
+      } else {
+        special_setup_commands <- list(paste0("module load nord3-singu \n",
+                                              "module load bsc/current \n",
+                                              "module use /gpfs/projects/bsc32/software/suselinux/11/modules/all \n",
+                                              "unset PYTHONSTARTUP \n",
+                                              "alias cdo='nord3_singu_es cdo' \n",
+                                              "alias Rscript='nord3_singu_es Rscript' \n",
+                                              "alias ecflow_client='nord3_singu_es ecflow_client' \n",
+                                              "shopt -s expand_aliases \n"))
+      }
+    }
+    bash_script_lines <- gsub('^include_special_setup',
+                              paste0(paste0(special_setup_commands, collapse = '\n'), '\n'),
+                              bash_script_lines)
+    # Include init commands
     bash_script_lines <- gsub('^include_init_commands',
                               paste0(paste0(cluster[['init_commands']], collapse = '\n'), '\n'),
-
                               bash_script_lines)
     # Rewrite include_module_load
-    bash_script_lines <- gsub('^include_module_load',
-                              paste0('module load ', cluster[['r_module']]),
-                              bash_script_lines)
+    if ('conda_env' %in% names(cluster)) {
+      bash_script_lines <- gsub('^include_module_load',
+                                paste0('set +eu \n',
+                                       'source /gpfs/projects/bsc32/software/suselinux/11/software/Miniconda3/4.7.10/etc/profile.d/conda.sh \n',
+                                       'conda activate ', cluster[['conda_env']], '\n',
+                                       'set -eu'),
+                                bash_script_lines)
+    } else {
+      bash_script_lines <- gsub('^include_module_load',
+                                paste0('module load ', cluster[['r_module']]),
+                                bash_script_lines)
+    }
     # Rewrite cd run_dir
     # If run_dir is not specified, the script will run under ${proj_dir}
     if (!is.null(cluster[['run_dir']])) {
@@ -943,7 +976,11 @@ write_autosubmit_confs <- function(chunks, cluster, autosubmit_suite_dir) {
 ############################################################
     if (conf_type == "autosubmit") {
 
+      conf$config$AUTOSUBMIT_VERSION <- cluster['autosubmit_version']
       #Q: Should it be the total amount of chunk?
+      ## TODO: Fix this; it is not generalizable
+      # conf$config$AUTOSUBMIT_VERSION <- stringr::str_extract(cluster['autosubmit_module'],
+      #                                                        "(?<=/)(.+)(?=\\-foss)")
       conf$config$MAXWAITINGJOBS <- as.integer(prod(unlist(chunks)))  # total amount of chunk
       #NOTE: Nord3 max. amount of queued jobs is 366
       if (conf$config$MAXWAITINGJOBS > 366) conf$config$MAXWAITINGJOBS <- 366
@@ -951,10 +988,12 @@ write_autosubmit_confs <- function(chunks, cluster, autosubmit_suite_dir) {
 
 ############################################################
     } else if (conf_type == "expdef") {
+      proj_dir <- paste0("STARTR_CHUNKING_", cluster$expid)
       conf$default$EXPID <- cluster$expid
       conf$default$HPCARCH <- cluster$queue_host
       # PROJECT_PATH should be where submit.sh and load....R stored --> local startR_autosubmit folder, under expID/ 
-      conf$local$PROJECT_PATH <- file.path(autosubmit_suite_dir, paste0("STARTR_CHUNKING_", cluster$expid))
+      conf$local$PROJECT_PATH <- file.path(autosubmit_suite_dir, proj_dir)
+      conf$project$PROJECT_DESTINATION <- proj_dir
 
 ############################################################
     } else if (conf_type == "jobs") {
@@ -990,6 +1029,7 @@ write_autosubmit_confs <- function(chunks, cluster, autosubmit_suite_dir) {
       if (tolower(cluster$queue_host) != "local") {
         conf$Platforms[[cluster$queue_host]]$USER <- cluster$hpc_user
         conf$Platforms[[cluster$queue_host]]$PROCESSORS_PER_NODE <- as.integer(cluster$cores_per_job)
+        conf$Platforms[[cluster$queue_host]]$HOSTNAME <- cluster$hostname
         if (!is.null(cluster$extra_queue_params)) {
           tmp <- unlist(cluster$extra_queue_params)
           for (ii in 1:length(tmp)) {

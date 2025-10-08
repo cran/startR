@@ -2039,7 +2039,8 @@ Start <- function(..., # dim = indices/selectors,
         # Some dimension is defined in Start() call but doesn't exist in data
         if (!all(expected_inner_dims[[i]] %in% names(data_dims))) {
           tmp <- expected_inner_dims[[i]][which(!expected_inner_dims[[i]] %in% names(data_dims))]
-          stop("Could not find the dimension '", tmp, "' in the file. Either ",
+          stop("Could not find the dimension(s) '",
+               paste0(tmp, collapse = "', '"), "' in the file. Either ",
                "change the dimension name in your request, adjust the ",
                "parameter 'dim_names_in_files' or fix the dimension name in ",
                "the file.\n", file_path)
@@ -2047,10 +2048,12 @@ Start <- function(..., # dim = indices/selectors,
         # Not all the inner dims are defined in Start() call
         if (!all(names(data_dims) %in% expected_inner_dims[[i]])) {
           tmp <- names(data_dims)[which(!names(data_dims) %in% expected_inner_dims[[i]])]
-          if (data_dims[tmp] != 1) {
-            stop("The dimension '", tmp, "' is found in the file ", file_path,
+          undefined_dims <- tmp[data_dims[tmp] != 1]
+          if (length(undefined_dims > 0)) {
+            stop("The dimension(s) '", paste(undefined_dims, collapse = ", "),
+                 "' is found in the file ", file_path,
                  " but not defined in the Start call.")
-          }
+          } 
         }
 
 
@@ -3948,6 +3951,9 @@ Start <- function(..., # dim = indices/selectors,
       #NOTE: When one file contains values for dicrete dimensions, rearrange the 
       #      chunks (i.e., work_piece) is necessary.
       if (split_multiselected_dims) {
+        if (!exists("indices_chunk")) {
+          indices_chunk <- c()
+        }
         tmp <- rebuild_array_merge_split(
                  data_array = data_array_tmp, metadata = metadata_tmp, indices_chunk,
                  all_split_dims, final_dims_fake, across_inner_dim, length_inner_across_dim)
@@ -4083,6 +4089,9 @@ Start <- function(..., # dim = indices/selectors,
       #NOTE: When one file contains values for dicrete dimensions, rearrange the 
       #      chunks (i.e., work_piece) is necessary.
       if (split_multiselected_dims) {
+        if (!exists("indices_chunk")) {
+          indices_chunk <- c()
+        }
         tmp <- rebuild_array_merge_split(
                  data_array = NULL, metadata = metadata_tmp, indices_chunk,
                  all_split_dims, final_dims_fake, across_inner_dim, length_inner_across_dim)

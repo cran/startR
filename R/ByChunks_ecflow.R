@@ -166,6 +166,7 @@ ByChunks_ecflow <- function(step_fun, cube_headers, ..., chunks = 'auto',
                           init_commands = list(''),
                           r_module = 'R',
                           CDO_module = NULL,
+                          conda_env = NULL,
                           ecflow_module = 'ecFlow',
                           node_memory = NULL,
                           cores_per_job = NULL,
@@ -184,8 +185,8 @@ ByChunks_ecflow <- function(step_fun, cube_headers, ..., chunks = 'auto',
     }
     if (any(!(names(cluster) %in% c('queue_host', 'queue_type', 'data_dir',
                                     'temp_dir', 'lib_dir', 'init_commands',
-                                    'r_module', 'CDO_module', 'autosubmit_module',
-                                    'ecflow_module', 'node_memory',
+                                    'r_module', 'CDO_module', 'conda_env',
+                                    'autosubmit_module', 'ecflow_module', 'node_memory',
                                     'cores_per_job', 'job_wallclock', 'max_jobs',
                                     'extra_queue_params', 'bidirectional',
                                     'polling_period', 'special_setup', 'expid', 'hpc_user')))) {
@@ -272,6 +273,23 @@ ByChunks_ecflow <- function(step_fun, cube_headers, ..., chunks = 'auto',
       }
       cluster[['r_module']] <- paste(cluster[['r_module']], cluster[['CDO_module']])
     }
+    ### conda environment
+    if (!is.null(cluster[['conda_env']])) {
+      if (!is.character(cluster[['conda_env']])) {
+        stop("The component 'conda_env' of the parameter 'cluster' must be a character string.")
+      }
+      if (nchar(cluster[['conda_env']]) < 1 || grepl(' ', cluster[['conda_env']])) {
+        warning("The component 'conda_env' of parameter 'cluster' must have at ",
+                "least one character and contain no blank spaces.")
+      }
+      if (!is.null(cluster[['r_module']])) {
+        warning("Both 'conda_env' and 'r_module' cluster components have been ",
+                "specified. 'conda_env' will be used.")
+      }
+    } else {
+      cluster$conda_env <- NULL
+    }
+
     if (!is.character(cluster[['ecflow_module']])) {
       stop("The component 'ecflow_module' of the parameter 'cluster' must be a character string.")
     }
@@ -295,7 +313,7 @@ ByChunks_ecflow <- function(step_fun, cube_headers, ..., chunks = 'auto',
       stop("The component 'extra_queue_params' of the parameter 'cluster' must be a list of ",
            "character strings.")
     }
-    if (!(cluster[['special_setup']] %in% c('none', 'marenostrum4'))) {
+    if (!(cluster[['special_setup']] %in% c('none', 'marenostrum4', 'nord4'))) {
       stop("The value provided for the component 'special_setup' of the parameter ",
            "'cluster' is not recognized.")
     }
@@ -505,12 +523,47 @@ ByChunks_ecflow <- function(step_fun, cube_headers, ..., chunks = 'auto',
                                      paste0('%include "./', cluster[['queue_type']], '.h"'),
                                      chunk_ecf_script_lines)
     }
+    # Special setup: Nord4 singularity wrapper
+    special_setup_commands <- list("")
+    if (cluster[['special_setup']] == "nord4") {
+      if ('conda_env' %in% names(cluster)) {
+        special_setup_commands <- list(paste0("module load nord3-singu \n",
+                                              "module load bsc/current \n",
+                                              "module use /gpfs/projects/bsc32/software/suselinux/11/modules/all \n",
+                                              "unset PYTHONSTARTUP \n",
+                                              "alias ecflow_client='nord3_singu_es ecflow_client' \n",
+                                              "shopt -s expand_aliases \n"))
+      } else {
+        special_setup_commands <- list(paste0("module load nord3-singu \n",
+                                              "module load bsc/current \n",
+                                              "module use /gpfs/projects/bsc32/software/suselinux/11/modules/all \n",
+                                              "unset PYTHONSTARTUP \n",
+                                              "alias cdo='nord3_singu_es cdo' \n",
+                                              "alias Rscript='nord3_singu_es Rscript' \n",
+                                              "alias ecflow_client='nord3_singu_es ecflow_client' \n",
+                                              "shopt -s expand_aliases \n"))
+      }
+    }
+    chunk_ecf_script_lines <- gsub('^include_special_setup',
+                                   paste0(paste0(special_setup_commands, collapse = '\n'), '\n'),
+                                   chunk_ecf_script_lines)
+    # Init commands
     chunk_ecf_script_lines <- gsub('^include_init_commands', 
                                    paste0(paste0(cluster[['init_commands']], collapse = '\n'), '\n'),
                                    chunk_ecf_script_lines)
-    chunk_ecf_script_lines <- gsub('^include_module_load', 
-                                   paste0('module load ', cluster[['r_module']]),
-                                   chunk_ecf_script_lines)
+    
+    if ('conda_env' %in% names(cluster)) {
+      chunk_ecf_script_lines <- gsub('^include_module_load',
+                                     paste0('set +eu \n',
+                                            'source /gpfs/projects/bsc32/software/suselinux/11/software/Miniconda3/4.7.10/etc/profile.d/conda.sh \n',
+                                            'conda activate ', cluster[['conda_env']], '\n',
+                                            'set -eu'),
+                                     chunk_ecf_script_lines)
+    } else {
+      chunk_ecf_script_lines <- gsub('^include_module_load',
+                                     paste0('module load ', cluster[['r_module']]),
+                                     chunk_ecf_script_lines)
+    }
     ecf_vars <- paste0('%', as.vector(sapply(chunked_dims,
                                              function(x) {
                                                c(toupper(x), paste0(toupper(x), '_N'))
@@ -639,7 +692,7 @@ ByChunks_ecflow <- function(step_fun, cube_headers, ..., chunks = 'auto',
     suite <- add_line(suite, paste0('edit ', toupper(chunked_dims[i]), ' ', 1), tabs)
     suite <- add_line(suite, paste0('edit ', toupper(chunked_dims[i]), '_N ', chunks[[chunked_dims[i]]]), tabs)
   }
-  
+ 
   # Iterate through chunks
   chunk_array <- array(1:prod(unlist(chunks)), dim = (unlist(chunks)))
   arrays_of_results <- vector('list', length(attr(step_fun, 'OutputDims')))

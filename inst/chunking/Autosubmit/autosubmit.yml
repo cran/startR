@@ -1,5 +1,5 @@
 config:
-  AUTOSUBMIT_VERSION: 4.0.0b0
+  AUTOSUBMIT_VERSION: 
   MAXWAITINGJOBS:   # Should it be the total amount of chunk?
   TOTALJOBS: 
   SAFETYSLEEPTIME: 10

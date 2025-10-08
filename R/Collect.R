@@ -417,22 +417,45 @@ Collect_autosubmit <- function(startr_exec, wait = TRUE, remove = TRUE, on_remot
   remote_autosubmit_suite_dir <- file.path("/esarchive/autosubmit/", suite_id, 'proj')
   remote_autosubmit_suite_dir_suite <- paste0(remote_autosubmit_suite_dir, '/STARTR_CHUNKING_', suite_id, '/')
   run_dir <- startr_exec$cluster[['run_dir']]
+  hpc_user <- startr_exec$cluster[['hpc_user']]
+  hostname <- startr_exec$cluster[['hostname']]
 
   done <- FALSE
 
   while (!done) { # If wait, try until it is done
-    sum_received_chunks <- sum(grepl('.*\\.Rds$', list.files(remote_autosubmit_suite_dir_suite)))
-    if (sum_received_chunks / num_outputs == prod(unlist(chunks))) {
-      done <- TRUE
+    if (!on_remote) {
+      sum_received_chunks <- sum(grepl('.*\\.Rds$', list.files(remote_autosubmit_suite_dir_suite)))
+      if (sum_received_chunks / num_outputs == prod(unlist(chunks))) {
+        done <- TRUE
 
-    } else if (!wait) {
-      stop("Computation in progress...")
+      } else if (!wait) {
+        stop("Computation in progress...")
+      } else {
+        message("Computation in progress,  ", sum_received_chunks, "  of ", prod(unlist(chunks)), " chunks are done...\n",
+                "Check status on Autosubmit GUI: https://earth.bsc.es/autosubmitapp/experiment/", suite_id)
+        Sys.sleep(startr_exec$cluster[['polling_period']])
+      }
     } else {
-      message("Computation in progress,  ", sum_received_chunks, "  of ", prod(unlist(chunks)), " chunks are done...\n",
-              "Check status on Autosubmit GUI: https://earth.bsc.es/autosubmitapp/experiment/", suite_id)
-      Sys.sleep(startr_exec$cluster[['polling_period']])
+      # Execution on remote server
+      files_in_remote_dir <- system(paste0("ssh ", hpc_user, "@", hostname, " 'ls ",
+                                           run_dir, "'"),
+                                    intern = TRUE)
+      sum_received_chunks <- sum(grepl('.*\\.Rds$', files_in_remote_dir))
+      if (sum_received_chunks / num_outputs == prod(unlist(chunks))) {
+        done <- TRUE
+        # Transfer files back
+        message("Computation finished on cluster, retrieving files...")
+        files_to_retrieve <- paste0(run_dir, files_in_remote_dir[grepl('.*\\.Rds$', files_in_remote_dir)])
+        system(paste0("rsync -avz --remove-source-files -e ssh ", hpc_user, "@", hostname, ":", run_dir, "/* ",
+                      remote_autosubmit_suite_dir_suite))
+      } else if (!wait) {
+        stop("Computation in progress...")
+      } else {
+        message("Computation in progress,  ", sum_received_chunks, "  of ", prod(unlist(chunks)), " chunks are done...\n",
+                "Check status on Autosubmit GUI: https://earth.bsc.es/autosubmitapp/experiment/", suite_id)
+        Sys.sleep(startr_exec$cluster[['polling_period']])
+      }
     }
-
   } # while !done
 
   result <- .MergeChunks(remote_autosubmit_suite_dir, suite_id, remove = remove)
